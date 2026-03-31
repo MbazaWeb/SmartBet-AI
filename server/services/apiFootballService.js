@@ -1,40 +1,66 @@
 import axios from 'axios'
-import NodeCache from 'node-cache'
-import { getUpcomingFixturesFromFootballData } from './footballDataService.js'
 import { buildPredictionModel } from './predictionService.js'
 import { markProviderConfigured, updateProviderPhase } from './providerDiagnosticsService.js'
 
+const FOOTBALL_DATA_BASE_URL = 'https://api.football-data.org/v4'
 const API_FOOTBALL_BASE_URL = 'https://v3.football.api-sports.io'
-const MAX_FIXTURES = 30
-const PLAYED_FIXTURE_LIMIT = 12
-const RECENT_MATCH_LIMIT = 5
-const UPCOMING_CACHE_TTL = 180
-const LIVE_CACHE_TTL = 20
-const PLAYED_CACHE_TTL = 60
-const ODDS_CACHE_TTL = 600
-const cache = new NodeCache({ stdTTL: 600, useClones: false })
-const LIVE_STATUS_CODES = new Set(['1H', 'HT', '2H', 'ET', 'BT', 'P', 'INT', 'SUSP', 'LIVE'])
-const PLAYED_STATUS_CODES = new Set(['FT', 'AET', 'PEN'])
-const PREFERRED_BOOKMAKERS = ['Bet365', 'Betano', 'William Hill', '10Bet', 'Unibet', 'Marathonbet']
+const MAX_FALLBACK_FIXTURES = 30
+const MAX_PLAYED_FALLBACK_FIXTURES = 12
+const DATE_WINDOW_DAYS = 5
+const PLAYED_LOOKBACK_DAYS = 7
 
-function getApiFootballKey() {
-  return process.env.API_FOOTBALL_KEY
+// Provider configuration
+const PROVIDERS = {
+  FOOTBALL_DATA: 'footballData',
+  API_FOOTBALL: 'apiFootball'
 }
 
-function isRateLimitError(error) {
-  return error?.message?.toLowerCase().includes('request limit')
+// Provider priority order (can be configured)
+let PROVIDER_PRIORITY = [PROVIDERS.API_FOOTBALL, PROVIDERS.FOOTBALL_DATA]
+
+// API key getters
+function getFootballDataKey() {
+  return process.env.FOOTBALL_DATA_API_KEY || process.env.VITE_FOOTBALL_DATA_API_KEY || ''
+}
+
+function getApiFootballKey() {
+  return process.env.API_FOOTBALL_KEY || process.env.VITE_API_FOOTBALL_KEY || ''
+}
+
+// Provider configuration check
+function isProviderConfigured(provider) {
+  switch (provider) {
+    case PROVIDERS.FOOTBALL_DATA:
+      return Boolean(getFootballDataKey())
+    case PROVIDERS.API_FOOTBALL:
+      return Boolean(getApiFootballKey())
+    default:
+      return false
+  }
+}
+
+// Provider clients
+function getFootballDataClient() {
+  const footballDataKey = getFootballDataKey()
+  return axios.create({
+    baseURL: FOOTBALL_DATA_BASE_URL,
+    headers: footballDataKey ? { 'X-Auth-Token': footballDataKey } : undefined,
+  })
 }
 
 function getApiFootballClient() {
   const apiFootballKey = getApiFootballKey()
-
   return axios.create({
     baseURL: API_FOOTBALL_BASE_URL,
-    headers: apiFootballKey ? { 'x-apisports-key': apiFootballKey } : undefined,
+    headers: apiFootballKey ? {
+      'x-rapidapi-key': apiFootballKey,
+      'x-rapidapi-host': 'v3.football.api-sports.io'
+    } : undefined,
   })
 }
 
-function formatApiDate(value) {
+// Utility functions
+function formatDate(value) {
   const date = new Date(value)
   const year = date.getUTCFullYear()
   const month = `${date.getUTCMonth() + 1}`.padStart(2, '0')
@@ -48,245 +74,8 @@ function addDays(value, days) {
   return date
 }
 
-function clamp(value, min, max) {
-  return Math.min(Math.max(value, min), max)
-}
-
-function parseNumber(value, fallback = 0) {
-  const parsed = Number.parseFloat(value)
-  return Number.isFinite(parsed) ? parsed : fallback
-}
-
-function round(value, precision = 2) {
-  return Number(value.toFixed(precision))
-}
-
-function normalizeOutcomeLabel(value) {
-  const label = String(value ?? '').trim().toLowerCase()
-
-  if (['home', 'home win', '1'].includes(label)) {
-    return 'home'
-  }
-
-  if (['draw', 'x'].includes(label)) {
-    return 'draw'
-  }
-
-  if (['away', 'away win', '2'].includes(label)) {
-    return 'away'
-  }
-
-  return null
-}
-
-function normalizeImpliedProbabilities(probabilities) {
-  const total = Object.values(probabilities).reduce((sum, value) => sum + value, 0)
-
-  if (!total) {
-    return null
-  }
-
-  return {
-    home: round(probabilities.home / total, 4),
-    draw: round(probabilities.draw / total, 4),
-    away: round(probabilities.away / total, 4),
-  }
-}
-
-function buildImpliedProbabilities(odds) {
-  if (!odds?.home || !odds?.draw || !odds?.away) {
-    return null
-  }
-
-  return normalizeImpliedProbabilities({
-    home: 1 / odds.home,
-    draw: 1 / odds.draw,
-    away: 1 / odds.away,
-  })
-}
-
-function buildBookmakerPreferenceIndex(name) {
-  const index = PREFERRED_BOOKMAKERS.indexOf(name)
-  return index === -1 ? Number.MAX_SAFE_INTEGER : index
-}
-
-function extractMatchWinnerOdds(bookmaker) {
-  const matchWinnerBet = bookmaker?.bets?.find((bet) => bet.name === 'Match Winner')
-
-  if (!matchWinnerBet?.values?.length) {
-    return null
-  }
-
-  const odds = matchWinnerBet.values.reduce(
-    (summary, entry) => {
-      const outcome = normalizeOutcomeLabel(entry.value)
-      const odd = parseNumber(entry.odd, 0)
-
-      if (!outcome || odd <= 1) {
-        return summary
-      }
-
-      return {
-        ...summary,
-        [outcome]: odd,
-      }
-    },
-    { home: 0, draw: 0, away: 0 },
-  )
-
-  if (!odds.home || !odds.draw || !odds.away) {
-    return null
-  }
-
-  const impliedProbabilities = buildImpliedProbabilities(odds)
-
-  if (!impliedProbabilities) {
-    return null
-  }
-
-  return {
-    bookmaker: bookmaker.name || 'Bookmaker',
-    odds: {
-      home: round(odds.home),
-      draw: round(odds.draw),
-      away: round(odds.away),
-    },
-    impliedProbabilities,
-    overround: round((1 / odds.home + 1 / odds.draw + 1 / odds.away - 1) * 100, 1),
-  }
-}
-
-function buildConsensusOdds(entries) {
-  if (!entries.length) {
-    return null
-  }
-
-  const totals = entries.reduce(
-    (summary, entry) => ({
-      home: summary.home + entry.odds.home,
-      draw: summary.draw + entry.odds.draw,
-      away: summary.away + entry.odds.away,
-    }),
-    { home: 0, draw: 0, away: 0 },
-  )
-
-  const odds = {
-    home: round(totals.home / entries.length),
-    draw: round(totals.draw / entries.length),
-    away: round(totals.away / entries.length),
-  }
-  const impliedProbabilities = buildImpliedProbabilities(odds)
-
-  if (!impliedProbabilities) {
-    return null
-  }
-
-  return {
-    odds,
-    impliedProbabilities,
-    overround: round((1 / odds.home + 1 / odds.draw + 1 / odds.away - 1) * 100, 1),
-  }
-}
-
-function buildBestOdds(entries) {
-  return ['home', 'draw', 'away'].reduce((summary, outcome) => {
-    const bestEntry = entries.reduce((currentBest, entry) => {
-      if (!currentBest || entry.odds[outcome] > currentBest.odds[outcome]) {
-        return entry
-      }
-
-      return currentBest
-    }, null)
-
-    return {
-      ...summary,
-      [outcome]: bestEntry
-        ? {
-            odds: bestEntry.odds[outcome],
-            bookmaker: bestEntry.bookmaker,
-          }
-        : null,
-    }
-  }, {})
-}
-
-async function fetchFixtureOdds(fixtureId, options = {}) {
-  if (!fixtureId) {
-    return null
-  }
-
-  const response = await cachedApiGet(
-    '/odds',
-    {
-      fixture: fixtureId,
-      timezone: 'UTC',
-    },
-    {
-      ttl: ODDS_CACHE_TTL,
-      forceFresh: options.fresh,
-    },
-  ).catch(() => [])
-
-  const bookmakerEntries = response
-    .flatMap((entry) => entry.bookmakers ?? [])
-    .map(extractMatchWinnerOdds)
-    .filter(Boolean)
-
-  if (!bookmakerEntries.length) {
-    return {
-      available: false,
-      reason: 'No bookmaker odds are available for this fixture.',
-    }
-  }
-
-  const rankedBookmakers = [...bookmakerEntries].sort((left, right) => {
-    const preferenceDelta = buildBookmakerPreferenceIndex(left.bookmaker) - buildBookmakerPreferenceIndex(right.bookmaker)
-
-    if (preferenceDelta !== 0) {
-      return preferenceDelta
-    }
-
-    return left.overround - right.overround
-  })
-
-  return {
-    available: true,
-    bookmakerCount: bookmakerEntries.length,
-    selectedBookmaker: rankedBookmakers[0],
-    consensus: buildConsensusOdds(bookmakerEntries),
-    bestOdds: buildBestOdds(bookmakerEntries),
-    bookmakers: rankedBookmakers.slice(0, 5),
-  }
-}
-
-function getStatusMeta(shortStatus, elapsed = 0) {
-  if (LIVE_STATUS_CODES.has(shortStatus)) {
-    return {
-      category: 'live',
-      label: elapsed ? `Live ${elapsed}'` : 'Live',
-      isLive: true,
-      isPlayed: false,
-      isUpcoming: false,
-    }
-  }
-
-  if (PLAYED_STATUS_CODES.has(shortStatus)) {
-    return {
-      category: 'played',
-      label: 'Played',
-      isLive: false,
-      isPlayed: true,
-      isUpcoming: false,
-    }
-  }
-
-  return {
-    category: 'upcoming',
-    label: 'Upcoming match',
-    isLive: false,
-    isPlayed: false,
-    isUpcoming: true,
-  }
+function subtractDays(value, days) {
+  return addDays(value, -days)
 }
 
 function defaultStats() {
@@ -311,680 +100,533 @@ function defaultSeasonStats() {
       wins: 0,
       draws: 0,
       losses: 0,
-      pointsPerMatch: 1.3,
+      pointsPerMatch: 1.1,
     },
   }
 }
 
-function getCacheKey(prefix, params) {
-  return `${prefix}:${JSON.stringify(params)}`
-}
-
-async function cachedAsync(key, factory, options = {}) {
-  const { ttl, forceFresh = false } = options
-
-  if (forceFresh) {
-    cache.del(key)
-  }
-
-  const cachedValue = cache.get(key)
-  if (cachedValue) {
-    return cachedValue
-  }
-
-  const pending = Promise.resolve(factory()).catch((error) => {
-    cache.del(key)
-    throw error
-  })
-
-  cache.set(key, pending, ttl)
-  return pending
-}
-
-async function cachedApiGet(path, params = {}, options = {}) {
-  return cachedAsync(getCacheKey(path, params), async () => {
-    const apiFootballClient = getApiFootballClient()
-    const response = await apiFootballClient.get(path, { params })
-    const apiErrors = Object.values(response.data.errors ?? {}).filter(Boolean)
-
-    if (apiErrors.length) {
-      throw new Error(apiErrors.join(' | '))
-    }
-
-    return response.data.response ?? []
-  }, options)
-}
-
-async function fetchUpcomingFixturesByDateWindow(options = {}) {
-  const daysToScan = 5
-  const fixtures = []
-
-  for (let index = 0; index < daysToScan && fixtures.length < MAX_FIXTURES; index += 1) {
-    const date = formatApiDate(addDays(new Date(), index))
-    const response = await cachedApiGet(
-      '/fixtures',
-      {
-        date,
-        timezone: 'UTC',
-      },
-      {
-        ttl: UPCOMING_CACHE_TTL,
-        forceFresh: options.fresh,
-      },
-    ).catch(() => [])
-
-    const upcomingForDate = response.filter((fixture) => !PLAYED_STATUS_CODES.has(fixture.fixture?.status?.short))
-    fixtures.push(...upcomingForDate)
-  }
-
-  const uniqueFixtures = new Map()
-
-  fixtures.forEach((fixture) => {
-    const fixtureId = fixture.fixture?.id
-
-    if (!uniqueFixtures.has(fixtureId)) {
-      uniqueFixtures.set(fixtureId, fixture)
-    }
-  })
-
-  return Array.from(uniqueFixtures.values())
-    .sort((left, right) => new Date(left.fixture?.date) - new Date(right.fixture?.date))
-    .slice(0, MAX_FIXTURES)
-}
-
-function getFixtureWinnerTeamId(fixture) {
-  const homeGoals = fixture.goals?.home
-  const awayGoals = fixture.goals?.away
-
-  if (!Number.isFinite(homeGoals) || !Number.isFinite(awayGoals) || homeGoals === awayGoals) {
-    return null
-  }
-
-  return homeGoals > awayGoals ? fixture.teams?.home?.id : fixture.teams?.away?.id
-}
-
-function getTeamResult(fixture, teamId) {
-  const homeGoals = fixture.goals?.home
-  const awayGoals = fixture.goals?.away
-
-  if (!Number.isFinite(homeGoals) || !Number.isFinite(awayGoals)) {
-    return 'D'
-  }
-
-  if (homeGoals === awayGoals) {
-    return 'D'
-  }
-
-  const isHome = fixture.teams?.home?.id === teamId
-  const teamWon = (isHome && homeGoals > awayGoals) || (!isHome && awayGoals > homeGoals)
-  return teamWon ? 'W' : 'L'
-}
-
-function normalizeRecentMatch(fixture, teamId) {
-  const isHome = fixture.teams?.home?.id === teamId
-  return {
-    id: fixture.fixture?.id,
-    utcDate: fixture.fixture?.date,
-    venue: isHome ? 'home' : 'away',
-    opponent: isHome ? fixture.teams?.away?.name || 'Opponent' : fixture.teams?.home?.name || 'Opponent',
-    scoreline: `${fixture.goals?.home ?? 0}-${fixture.goals?.away ?? 0}`,
-    goalsFor: isHome ? fixture.goals?.home ?? 0 : fixture.goals?.away ?? 0,
-    goalsAgainst: isHome ? fixture.goals?.away ?? 0 : fixture.goals?.home ?? 0,
-    result: getTeamResult(fixture, teamId),
-    winnerTeamId: getFixtureWinnerTeamId(fixture),
-  }
-}
-
-function normalizeHeadToHeadMatch(fixture) {
-  return {
-    id: fixture.fixture?.id,
-    winnerTeamId: getFixtureWinnerTeamId(fixture),
-  }
-}
-
-function buildVenuePerformance(stats, venue) {
-  const played = Number(stats.fixtures?.played?.[venue] ?? 0)
-  const wins = Number(stats.fixtures?.wins?.[venue] ?? 0)
-  const draws = Number(stats.fixtures?.draws?.[venue] ?? 0)
-  const losses = Number(stats.fixtures?.loses?.[venue] ?? 0)
-  const points = wins * 3 + draws
-
-  return {
-    wins,
-    draws,
-    losses,
-    pointsPerMatch: round(played ? points / played : venue === 'home' ? 1.5 : 1.1),
-  }
-}
-
-function buildSeasonStats(stats) {
-  if (!stats) {
-    return defaultSeasonStats()
-  }
-
-  return {
-    averageGoalsScored: round(parseNumber(stats.goals?.for?.average?.total, 1.3)),
-    averageGoalsConceded: round(parseNumber(stats.goals?.against?.average?.total, 1.3)),
-    homePerformance: buildVenuePerformance(stats, 'home'),
-    awayPerformance: buildVenuePerformance(stats, 'away'),
-  }
-}
-
-function buildLeagueAverageGoals(fixtures) {
-  const completedFixtures = fixtures.filter(
-    (fixture) => Number.isFinite(fixture.goals?.home) && Number.isFinite(fixture.goals?.away),
-  )
-
-  if (!completedFixtures.length) {
-    return 1.35
-  }
-
-  const totalGoals = completedFixtures.reduce(
-    (sum, fixture) => sum + (fixture.goals?.home ?? 0) + (fixture.goals?.away ?? 0),
-    0,
-  )
-
-  return round(totalGoals / (completedFixtures.length * 2))
-}
-
-function deriveTeamStats(fixtures, teamId) {
-  const completedFixtures = fixtures.filter(
-    (fixture) => Number.isFinite(fixture.goals?.home) && Number.isFinite(fixture.goals?.away),
-  )
-
-  if (!completedFixtures.length) {
-    return defaultStats()
-  }
-
-  const aggregate = completedFixtures.reduce(
-    (summary, fixture) => {
-      const isHome = fixture.teams?.home?.id === teamId
-      const goalsFor = isHome ? fixture.goals.home : fixture.goals.away
-      const goalsAgainst = isHome ? fixture.goals.away : fixture.goals.home
-
-      let points = 0
-
-      if (goalsFor > goalsAgainst) {
-        points = 3
-      } else if (goalsFor === goalsAgainst) {
-        points = 1
-      }
-
+function mapStatus(status, provider) {
+  if (provider === PROVIDERS.API_FOOTBALL) {
+    if (['1ST_HALF', '2ND_HALF', 'HALF_TIME', 'EXTRA_TIME', 'PENALTY_SHOOTOUT'].includes(status)) {
       return {
-        goalsFor: summary.goalsFor + goalsFor,
-        goalsAgainst: summary.goalsAgainst + goalsAgainst,
-        points: summary.points + points,
+        status: 'LIVE',
+        statusLabel: 'Live',
+        statusCategory: 'live',
+        isLive: true,
+        isPlayed: false,
+        isUpcoming: false,
       }
-    },
-    { goalsFor: 0, goalsAgainst: 0, points: 0 },
-  )
+    }
+    if (status === 'FT' || status === 'AET' || status === 'PEN') {
+      return {
+        status: 'FT',
+        statusLabel: 'Played',
+        statusCategory: 'played',
+        isLive: false,
+        isPlayed: true,
+        isUpcoming: false,
+      }
+    }
+    if (status === 'NS' || status === 'TBD' || status === 'POSTPONED' || status === 'CANCELLED') {
+      return {
+        status: 'NS',
+        statusLabel: 'Upcoming match',
+        statusCategory: 'upcoming',
+        isLive: false,
+        isPlayed: false,
+        isUpcoming: true,
+      }
+    }
+  }
 
-  const matchesPlayed = completedFixtures.length
+  // Default mapping for football-data.org
+  if (['IN_PLAY', 'PAUSED'].includes(status)) {
+    return {
+      status: 'LIVE',
+      statusLabel: 'Live',
+      statusCategory: 'live',
+      isLive: true,
+      isPlayed: false,
+      isUpcoming: false,
+    }
+  }
+
+  if (['FINISHED'].includes(status)) {
+    return {
+      status: 'FT',
+      statusLabel: 'Played',
+      statusCategory: 'played',
+      isLive: false,
+      isPlayed: true,
+      isUpcoming: false,
+    }
+  }
 
   return {
-    form: clamp(aggregate.points / (matchesPlayed * 3), 0, 1),
-    goalsScoredPerMatch: Number((aggregate.goalsFor / matchesPlayed).toFixed(2)),
-    goalsConcededPerMatch: Number((aggregate.goalsAgainst / matchesPlayed).toFixed(2)),
+    status: 'NS',
+    statusLabel: 'Upcoming match',
+    statusCategory: 'upcoming',
+    isLive: false,
+    isPlayed: false,
+    isUpcoming: true,
   }
 }
 
-async function fetchTeamStats(teamId, statsCache) {
-  if (!teamId) {
-    return defaultStats()
-  }
-
-  if (!statsCache.has(teamId)) {
-    const apiFootballClient = getApiFootballClient()
-    const request = apiFootballClient
-      .get('/fixtures', {
-        params: {
-          team: teamId,
-          last: RECENT_MATCH_LIMIT,
-          status: 'FT',
-          timezone: 'UTC',
-        },
-      })
-      .then((response) => deriveTeamStats(response.data.response ?? [], teamId))
-      .catch(() => defaultStats())
-
-    statsCache.set(teamId, request)
-  }
-
-  return statsCache.get(teamId)
-}
-
-async function fetchRecentMatches(teamId) {
-  if (!teamId) {
-    return []
-  }
-
-  const fixtures = await cachedApiGet('/fixtures', {
-    team: teamId,
-    last: RECENT_MATCH_LIMIT,
-    status: 'FT',
-    timezone: 'UTC',
-  }).catch(() => [])
-
-  return fixtures.map((fixture) => normalizeRecentMatch(fixture, teamId))
-}
-
-async function fetchSeasonStats(teamId, leagueId, season) {
-  if (!teamId || !leagueId || !season) {
-    return defaultSeasonStats()
-  }
-
-  const response = await cachedApiGet('/teams/statistics', {
-    team: teamId,
-    league: leagueId,
-    season,
-  }).catch(() => null)
-
-  const stats = Array.isArray(response) ? response[0] : response
-  return buildSeasonStats(stats)
-}
-
-async function fetchHeadToHead(homeTeamId, awayTeamId) {
-  if (!homeTeamId || !awayTeamId) {
-    return []
-  }
-
-  const fixtures = await cachedApiGet('/fixtures/headtohead', {
-    h2h: `${homeTeamId}-${awayTeamId}`,
-    last: RECENT_MATCH_LIMIT,
-  }).catch(() => [])
-
-  return fixtures.map(normalizeHeadToHeadMatch)
-}
-
-async function fetchLeagueAverageGoals(leagueId, season) {
-  if (!leagueId || !season) {
-    return 1.35
-  }
-
-  const fixtures = await cachedApiGet('/fixtures', {
-    league: leagueId,
-    season,
-    last: 100,
-    status: 'FT',
-    timezone: 'UTC',
-  }).catch(() => [])
-
-  return buildLeagueAverageGoals(fixtures)
-}
-
-async function fetchFixtureById(fixtureId) {
-  const fixtures = await cachedApiGet('/fixtures', {
-    id: fixtureId,
-    timezone: 'UTC',
-  }).catch(() => [])
-
-  return fixtures[0] ?? null
-}
-
-async function buildFixtureModel(fixture) {
+// Provider-specific normalization functions
+function normalizeFootballDataFixture(match) {
+  const statusMeta = mapStatus(match.status, PROVIDERS.FOOTBALL_DATA)
   const homeTeam = {
-    id: fixture.teams?.home?.id,
-    name: fixture.teams?.home?.name || 'Home Team',
-    logo: fixture.teams?.home?.logo || '',
+    id: match.homeTeam?.id,
+    name: match.homeTeam?.name || 'Home Team',
+    logo: match.homeTeam?.crest || '',
   }
   const awayTeam = {
-    id: fixture.teams?.away?.id,
-    name: fixture.teams?.away?.name || 'Away Team',
-    logo: fixture.teams?.away?.logo || '',
+    id: match.awayTeam?.id,
+    name: match.awayTeam?.name || 'Away Team',
+    logo: match.awayTeam?.crest || '',
   }
-  const leagueId = fixture.league?.id
-  const season = fixture.league?.season
-  const [homeRecentMatches, awayRecentMatches, homeSeasonStats, awaySeasonStats, h2hMatches, leagueAverageGoals, bookmakerOdds] = await Promise.all([
-    fetchRecentMatches(homeTeam.id),
-    fetchRecentMatches(awayTeam.id),
-    fetchSeasonStats(homeTeam.id, leagueId, season),
-    fetchSeasonStats(awayTeam.id, leagueId, season),
-    fetchHeadToHead(homeTeam.id, awayTeam.id),
-    fetchLeagueAverageGoals(leagueId, season),
-    fetchFixtureOdds(fixture.fixture?.id),
-  ])
-
-  return buildPredictionModel({
+  const model = buildPredictionModel({
     homeTeam,
     awayTeam,
-    leagueAverageGoals,
-    homeRecentMatches,
-    awayRecentMatches,
-    h2hMatches,
-    homeSeasonStats,
-    awaySeasonStats,
-    bookmakerOdds,
+    leagueAverageGoals: 1.35,
+    homeRecentMatches: [],
+    awayRecentMatches: [],
+    h2hMatches: [],
+    homeSeasonStats: defaultSeasonStats(),
+    awaySeasonStats: defaultSeasonStats(),
+    bookmakerOdds: null,
   })
-}
-
-function normalizeFixture(fixture, homeStats, awayStats) {
-  const model = fixture.model ?? null
-  const shortStatus = fixture.fixture?.status?.short || 'NS'
-  const elapsed = fixture.fixture?.status?.elapsed ?? 0
-  const statusMeta = getStatusMeta(shortStatus, elapsed)
 
   return {
-    id: fixture.fixture?.id,
+    id: match.id,
     competition: {
-      code: `${fixture.league?.id ?? ''}`,
-      name: fixture.league?.name || 'League',
-      country: fixture.league?.country || '',
-      logo: fixture.league?.logo || '',
+      code: match.competition?.code || `${match.competition?.id ?? ''}`,
+      name: match.competition?.name || 'Competition',
+      country: match.area?.name || '',
+      logo: match.competition?.emblem || '',
     },
-    season: fixture.league?.season,
-    utcDate: fixture.fixture?.date,
-    status: shortStatus,
-    statusLabel: statusMeta.label,
-    statusCategory: statusMeta.category,
+    season: match.season?.startDate ? Number.parseInt(match.season.startDate.slice(0, 4), 10) : null,
+    utcDate: match.utcDate,
+    status: statusMeta.status,
+    statusLabel: statusMeta.statusLabel,
+    statusCategory: statusMeta.statusCategory,
     isLive: statusMeta.isLive,
     isPlayed: statusMeta.isPlayed,
     isUpcoming: statusMeta.isUpcoming,
-    elapsed,
-    venue: fixture.fixture?.venue?.name || '',
+    elapsed: 0,
+    venue: '',
     score: {
-      home: fixture.goals?.home,
-      away: fixture.goals?.away,
+      home: match.score?.fullTime?.home ?? null,
+      away: match.score?.fullTime?.away ?? null,
     },
-    homeTeam: {
-      id: fixture.teams?.home?.id,
-      name: fixture.teams?.home?.name || 'Home Team',
-      logo: fixture.teams?.home?.logo || '',
-    },
-    awayTeam: {
-      id: fixture.teams?.away?.id,
-      name: fixture.teams?.away?.name || 'Away Team',
-      logo: fixture.teams?.away?.logo || '',
-    },
-    homeStats,
-    awayStats,
+    homeTeam,
+    awayTeam,
+    homeStats: defaultStats(),
+    awayStats: defaultStats(),
     model,
-    bookmakerOdds: model?.valueBet?.consensus ? {
-      bookmakerCount: model.valueBet.bookmakerCount,
-      consensus: model.valueBet.consensus,
-      bestOdds: model.valueBet.bestOdds,
-      recommended: model.valueBet.recommended,
-      bestEdge: model.valueBet.bestEdge,
-      bestExpectedValue: model.valueBet.bestExpectedValue,
-      isPositiveEdge: model.valueBet.isPositiveEdge,
-    } : null,
-    source: 'api-football',
+    bookmakerOdds: null,
+    source: 'football-data',
   }
 }
 
-function normalizeLiveFixture(fixture) {
-  const shortStatus = fixture.fixture?.status?.short || 'LIVE'
-  const elapsed = fixture.fixture?.status?.elapsed ?? 0
-  const statusMeta = getStatusMeta(shortStatus, elapsed)
+function normalizeApiFootballFixture(match) {
+  const statusMeta = mapStatus(match.fixture.status.short, PROVIDERS.API_FOOTBALL)
+  const homeTeam = {
+    id: match.teams.home.id,
+    name: match.teams.home.name,
+    logo: match.teams.home.logo,
+  }
+  const awayTeam = {
+    id: match.teams.away.id,
+    name: match.teams.away.name,
+    logo: match.teams.away.logo,
+  }
+  const model = buildPredictionModel({
+    homeTeam,
+    awayTeam,
+    leagueAverageGoals: 1.35,
+    homeRecentMatches: [],
+    awayRecentMatches: [],
+    h2hMatches: [],
+    homeSeasonStats: defaultSeasonStats(),
+    awaySeasonStats: defaultSeasonStats(),
+    bookmakerOdds: null,
+  })
 
   return {
-    id: fixture.fixture?.id,
+    id: match.fixture.id,
     competition: {
-      code: `${fixture.league?.id ?? ''}`,
-      name: fixture.league?.name || 'League',
-      country: fixture.league?.country || '',
-      logo: fixture.league?.logo || '',
+      code: match.league.code || '',
+      name: match.league.name,
+      country: match.league.country || '',
+      logo: match.league.logo,
     },
-    utcDate: fixture.fixture?.date,
-    elapsed,
-    status: shortStatus,
-    statusLabel: statusMeta.label,
-    statusCategory: statusMeta.category,
+    season: match.league.season,
+    utcDate: match.fixture.date,
+    status: statusMeta.status,
+    statusLabel: statusMeta.statusLabel,
+    statusCategory: statusMeta.statusCategory,
     isLive: statusMeta.isLive,
     isPlayed: statusMeta.isPlayed,
     isUpcoming: statusMeta.isUpcoming,
-    venue: fixture.fixture?.venue?.name || '',
-    homeTeam: {
-      id: fixture.teams?.home?.id,
-      name: fixture.teams?.home?.name || 'Home Team',
-      logo: fixture.teams?.home?.logo || '',
-    },
-    awayTeam: {
-      id: fixture.teams?.away?.id,
-      name: fixture.teams?.away?.name || 'Away Team',
-      logo: fixture.teams?.away?.logo || '',
-    },
+    elapsed: match.fixture.status.elapsed || 0,
+    venue: match.fixture.venue?.name || '',
     score: {
-      home: fixture.goals?.home ?? 0,
-      away: fixture.goals?.away ?? 0,
+      home: match.goals.home,
+      away: match.goals.away,
     },
+    homeTeam,
+    awayTeam,
+    homeStats: defaultStats(),
+    awayStats: defaultStats(),
+    model,
+    bookmakerOdds: null,
     source: 'api-football',
   }
 }
 
-export async function getUpcomingFixtures(options = {}) {
+function buildFootballDataDetail(match) {
+  const normalizedMatch = normalizeFootballDataFixture(match)
+
+  return {
+    fixtureId: normalizedMatch.id,
+    homeTeam: normalizedMatch.homeTeam,
+    awayTeam: normalizedMatch.awayTeam,
+    league: {
+      id: match.competition?.id,
+      name: normalizedMatch.competition.name,
+      country: normalizedMatch.competition.country,
+      season: normalizedMatch.season,
+      logo: normalizedMatch.competition.logo,
+    },
+    model: normalizedMatch.model,
+    provider: PROVIDERS.FOOTBALL_DATA,
+  }
+}
+
+function buildApiFootballDetail(match) {
+  const normalizedMatch = normalizeApiFootballFixture(match)
+
+  return {
+    fixtureId: normalizedMatch.id,
+    homeTeam: normalizedMatch.homeTeam,
+    awayTeam: normalizedMatch.awayTeam,
+    league: {
+      id: match.league.id,
+      name: normalizedMatch.competition.name,
+      country: normalizedMatch.competition.country,
+      season: normalizedMatch.season,
+      logo: normalizedMatch.competition.logo,
+    },
+    model: normalizedMatch.model,
+    provider: PROVIDERS.API_FOOTBALL,
+  }
+}
+
+// Provider-specific fetch functions
+async function fetchFootballDataMatches(params, phase, options = {}) {
+  const diagnostics = options.diagnostics
+  const footballDataKey = getFootballDataKey()
+  markProviderConfigured(diagnostics, 'footballData', Boolean(footballDataKey))
+
+  if (!footballDataKey) {
+    updateProviderPhase(diagnostics, 'footballData', phase, {
+      status: 'skipped',
+      count: 0,
+      message: 'Missing FOOTBALL_DATA_API_KEY or VITE_FOOTBALL_DATA_API_KEY.',
+    })
+    return []
+  }
+
+  const client = getFootballDataClient()
+  const response = await client.get('/matches', { params }).catch((error) => {
+    updateProviderPhase(diagnostics, 'footballData', phase, {
+      status: 'error',
+      count: 0,
+      message: error.response?.data?.message || error.message || 'Football-Data request failed.',
+    })
+    return null
+  })
+
+  return response?.data?.matches ?? []
+}
+
+async function fetchApiFootballMatches(params, phase, options = {}) {
   const diagnostics = options.diagnostics
   const apiFootballKey = getApiFootballKey()
   markProviderConfigured(diagnostics, 'apiFootball', Boolean(apiFootballKey))
 
   if (!apiFootballKey) {
-    updateProviderPhase(diagnostics, 'apiFootball', 'upcoming', {
+    updateProviderPhase(diagnostics, 'apiFootball', phase, {
       status: 'skipped',
       count: 0,
-      message: 'Missing API_FOOTBALL_KEY.',
+      message: 'Missing API_FOOTBALL_KEY or VITE_API_FOOTBALL_KEY.',
     })
-    return getUpcomingFixturesFromFootballData(options)
+    return []
   }
 
-  const response = await cachedApiGet(
-    '/fixtures',
-    {
-      next: MAX_FIXTURES,
-      timezone: 'UTC',
-    },
-    {
-      ttl: UPCOMING_CACHE_TTL,
-      forceFresh: options.fresh,
-    },
-  ).catch(async (error) => {
-    if (error.message.includes('Next parameter')) {
-      updateProviderPhase(diagnostics, 'apiFootball', 'upcoming', {
-        status: 'fallback',
-        count: 0,
-        message: 'API-Football rejected the next parameter. Falling back to date-window scan.',
-      })
-      return fetchUpcomingFixturesByDateWindow(options)
-    }
-
-    if (isRateLimitError(error)) {
-      updateProviderPhase(diagnostics, 'apiFootball', 'upcoming', {
-        status: 'fallback',
-        count: 0,
-        message: 'API-Football rate limit reached. Falling back to Football-Data.',
-      })
-      return getUpcomingFixturesFromFootballData(options)
-    }
-
-    updateProviderPhase(diagnostics, 'apiFootball', 'upcoming', {
+  const client = getApiFootballClient()
+  const response = await client.get('/fixtures', { params }).catch((error) => {
+    updateProviderPhase(diagnostics, 'apiFootball', phase, {
       status: 'error',
       count: 0,
       message: error.response?.data?.message || error.message || 'API-Football request failed.',
     })
-
-    throw error
+    return null
   })
 
-  if (response[0]?.source === 'football-data') {
-    updateProviderPhase(diagnostics, 'apiFootball', 'upcoming', {
-      status: 'fallback',
-      count: 0,
-      message: 'Using Football-Data fallback because API-Football did not provide fixtures.',
-    })
-    return response
-  }
-
-  const fixtures = response.slice(0, MAX_FIXTURES)
-
-  if (!fixtures.length) {
-    updateProviderPhase(diagnostics, 'apiFootball', 'upcoming', {
-      status: 'empty',
-      count: 0,
-      message: 'API-Football returned no upcoming fixtures.',
-    })
-    return getUpcomingFixturesFromFootballData(options)
-  }
-
-  updateProviderPhase(diagnostics, 'apiFootball', 'upcoming', {
-    status: 'success',
-    count: fixtures.length,
-    message: 'API-Football returned upcoming fixtures.',
-  })
-
-  const statsCache = new Map()
-
-  return Promise.all(
-    fixtures.map(async (fixture) => {
-      const [homeStats, awayStats] = await Promise.all([
-        fetchTeamStats(fixture.teams?.home?.id, statsCache),
-        fetchTeamStats(fixture.teams?.away?.id, statsCache),
-      ])
-
-      const model = await buildFixtureModel(fixture).catch(() => null)
-
-      return normalizeFixture({ ...fixture, model }, homeStats, awayStats)
-    }),
-  )
+  return response?.data?.response ?? []
 }
 
-export async function getLiveFixtures(options = {}) {
-  const diagnostics = options.diagnostics
-  const apiFootballKey = getApiFootballKey()
-  markProviderConfigured(diagnostics, 'apiFootball', Boolean(apiFootballKey))
+// Generic fetch function that tries providers in priority order
+async function fetchFromProviders(fetchFunctions, phase, options = {}) {
+  const results = []
+  const errors = []
 
-  if (!apiFootballKey) {
-    updateProviderPhase(diagnostics, 'apiFootball', 'live', {
-      status: 'skipped',
-      count: 0,
-      message: 'Missing API_FOOTBALL_KEY.',
-    })
-    return []
-  }
+  for (const { provider, fetchFn, params, normalizeFn } of fetchFunctions) {
+    if (!isProviderConfigured(provider)) {
+      continue
+    }
 
-  try {
-    const response = await cachedApiGet(
-      '/fixtures',
-      {
-        live: 'all',
-        timezone: 'UTC',
-      },
-      {
-        ttl: LIVE_CACHE_TTL,
-        forceFresh: options.fresh,
-      },
-    )
-
-    updateProviderPhase(diagnostics, 'apiFootball', 'live', {
-      status: response.length ? 'success' : 'empty',
-      count: response.length,
-      message: response.length ? 'API-Football returned live fixtures.' : 'API-Football returned no live fixtures.',
-    })
-
-    return response.map(normalizeLiveFixture)
-  } catch (error) {
-    updateProviderPhase(diagnostics, 'apiFootball', 'live', {
-      status: 'error',
-      count: 0,
-      message: error.response?.data?.message || error.message || 'API-Football live request failed.',
-    })
-    return []
-  }
-}
-
-export async function getPlayedFixtures(options = {}) {
-  const diagnostics = options.diagnostics
-  const apiFootballKey = getApiFootballKey()
-  markProviderConfigured(diagnostics, 'apiFootball', Boolean(apiFootballKey))
-
-  if (!apiFootballKey) {
-    updateProviderPhase(diagnostics, 'apiFootball', 'played', {
-      status: 'skipped',
-      count: 0,
-      message: 'Missing API_FOOTBALL_KEY.',
-    })
-    return []
-  }
-
-  try {
-    const fixtures = await cachedApiGet(
-      '/fixtures',
-      {
-        last: PLAYED_FIXTURE_LIMIT,
-        status: 'FT',
-        timezone: 'UTC',
-      },
-      {
-        ttl: PLAYED_CACHE_TTL,
-        forceFresh: options.fresh,
-      },
-    )
-
-    const statsCache = new Map()
-
-    return Promise.all(
-      fixtures.map(async (fixture) => {
-        const [homeStats, awayStats] = await Promise.all([
-          fetchTeamStats(fixture.teams?.home?.id, statsCache),
-          fetchTeamStats(fixture.teams?.away?.id, statsCache),
-        ])
-
-        const model = await buildFixtureModel(fixture).catch(() => null)
-
-        return normalizeFixture({ ...fixture, model }, homeStats, awayStats)
-      }),
-    )
-      .then((normalizedFixtures) => {
-        updateProviderPhase(diagnostics, 'apiFootball', 'played', {
-          status: normalizedFixtures.length ? 'success' : 'empty',
-          count: normalizedFixtures.length,
-          message: normalizedFixtures.length
-            ? 'API-Football returned recently played fixtures.'
-            : 'API-Football returned no recently played fixtures.',
+    try {
+      const data = await fetchFn(params, phase, options)
+      if (data && data.length > 0) {
+        const normalized = data.map(normalizeFn)
+        results.push({
+          provider,
+          data: normalized,
+          count: normalized.length
         })
-
-        return normalizedFixtures
+        // If we have data and we're not requiring all providers, return first successful
+        if (!options.useAllProviders) {
+          return normalized
+        }
+      }
+    } catch (error) {
+      errors.push({ provider, error: error.message })
+      updateProviderPhase(options.diagnostics, provider, phase, {
+        status: 'error',
+        count: 0,
+        message: error.message,
       })
-  } catch (error) {
-    updateProviderPhase(diagnostics, 'apiFootball', 'played', {
-      status: 'error',
-      count: 0,
-      message: error.response?.data?.message || error.message || 'API-Football played fixtures request failed.',
+    }
+  }
+
+  if (options.useAllProviders) {
+    // Combine all results
+    const combined = results.flatMap(r => r.data)
+    // Remove duplicates by fixture ID
+    const unique = combined.filter((fixture, index, self) =>
+      index === self.findIndex(f => f.id === fixture.id)
+    )
+    return unique
+  }
+
+  // Return first successful or empty array
+  return results.length > 0 ? results[0].data : []
+}
+
+// Public functions that use multiple providers
+export async function getUpcomingFixturesFromFootballData(options = {}) {
+  const diagnostics = options.diagnostics
+  const dateFrom = formatDate(new Date())
+  const dateTo = formatDate(addDays(new Date(), DATE_WINDOW_DAYS))
+
+  const fetchFunctions = []
+
+  if (PROVIDER_PRIORITY.includes(PROVIDERS.API_FOOTBALL)) {
+    fetchFunctions.push({
+      provider: PROVIDERS.API_FOOTBALL,
+      fetchFn: fetchApiFootballMatches,
+      params: {
+        date: `${dateFrom}-${dateTo}`,
+        status: 'NS',
+      },
+      normalizeFn: normalizeApiFootballFixture,
     })
-    return []
+  }
+
+  if (PROVIDER_PRIORITY.includes(PROVIDERS.FOOTBALL_DATA)) {
+    fetchFunctions.push({
+      provider: PROVIDERS.FOOTBALL_DATA,
+      fetchFn: fetchFootballDataMatches,
+      params: {
+        dateFrom,
+        dateTo,
+      },
+      normalizeFn: normalizeFootballDataFixture,
+    })
+  }
+
+  const matches = await fetchFromProviders(fetchFunctions, 'upcoming', options)
+
+  const filteredMatches = matches
+    .filter((match) => match.isUpcoming)
+    .sort((left, right) => new Date(left.utcDate) - new Date(right.utcDate))
+    .slice(0, MAX_FALLBACK_FIXTURES)
+
+  const providerUsed = matches.length > 0 ? matches[0].source : 'none'
+  updateProviderPhase(diagnostics, providerUsed, 'upcoming', {
+    status: filteredMatches.length ? 'success' : 'empty',
+    count: filteredMatches.length,
+    message: filteredMatches.length
+      ? `${providerUsed} returned upcoming fixtures.`
+      : `No upcoming fixtures found from any provider.`,
+  })
+
+  return filteredMatches
+}
+
+export async function getLiveFixturesFromFootballData(options = {}) {
+  const fetchFunctions = []
+
+  if (PROVIDER_PRIORITY.includes(PROVIDERS.API_FOOTBALL)) {
+    fetchFunctions.push({
+      provider: PROVIDERS.API_FOOTBALL,
+      fetchFn: fetchApiFootballMatches,
+      params: {
+        live: 'all',
+      },
+      normalizeFn: normalizeApiFootballFixture,
+    })
+  }
+
+  if (PROVIDER_PRIORITY.includes(PROVIDERS.FOOTBALL_DATA)) {
+    fetchFunctions.push({
+      provider: PROVIDERS.FOOTBALL_DATA,
+      fetchFn: fetchFootballDataMatches,
+      params: {
+        status: 'LIVE',
+      },
+      normalizeFn: normalizeFootballDataFixture,
+    })
+  }
+
+  const matches = await fetchFromProviders(fetchFunctions, 'live', options)
+
+  const filteredMatches = matches
+    .filter((match) => match.isLive)
+    .sort((left, right) => new Date(left.utcDate) - new Date(right.utcDate))
+    .slice(0, MAX_FALLBACK_FIXTURES)
+
+  const providerUsed = matches.length > 0 ? matches[0].source : 'none'
+  updateProviderPhase(options.diagnostics, providerUsed, 'live', {
+    status: filteredMatches.length ? 'success' : 'empty',
+    count: filteredMatches.length,
+    message: filteredMatches.length
+      ? `${providerUsed} returned live fixtures.`
+      : 'No live fixtures found from any provider.',
+  })
+
+  return filteredMatches
+}
+
+export async function getPlayedFixturesFromFootballData(options = {}) {
+  const dateFrom = formatDate(subtractDays(new Date(), PLAYED_LOOKBACK_DAYS))
+  const dateTo = formatDate(new Date())
+
+  const fetchFunctions = []
+
+  if (PROVIDER_PRIORITY.includes(PROVIDERS.API_FOOTBALL)) {
+    fetchFunctions.push({
+      provider: PROVIDERS.API_FOOTBALL,
+      fetchFn: fetchApiFootballMatches,
+      params: {
+        date: `${dateFrom}-${dateTo}`,
+        status: 'FT',
+      },
+      normalizeFn: normalizeApiFootballFixture,
+    })
+  }
+
+  if (PROVIDER_PRIORITY.includes(PROVIDERS.FOOTBALL_DATA)) {
+    fetchFunctions.push({
+      provider: PROVIDERS.FOOTBALL_DATA,
+      fetchFn: fetchFootballDataMatches,
+      params: {
+        dateFrom,
+        dateTo,
+        status: 'FINISHED',
+      },
+      normalizeFn: normalizeFootballDataFixture,
+    })
+  }
+
+  const matches = await fetchFromProviders(fetchFunctions, 'played', options)
+
+  const filteredMatches = matches
+    .filter((match) => match.isPlayed)
+    .sort((left, right) => new Date(right.utcDate) - new Date(left.utcDate))
+    .slice(0, MAX_PLAYED_FALLBACK_FIXTURES)
+
+  const providerUsed = matches.length > 0 ? matches[0].source : 'none'
+  updateProviderPhase(options.diagnostics, providerUsed, 'played', {
+    status: filteredMatches.length ? 'success' : 'empty',
+    count: filteredMatches.length,
+    message: filteredMatches.length
+      ? `${providerUsed} returned recently played fixtures.`
+      : 'No recently played fixtures found from any provider.',
+  })
+
+  return filteredMatches
+}
+
+export async function getMatchDetailsFromFootballData(fixtureId) {
+  // Try providers in priority order
+  for (const provider of PROVIDER_PRIORITY) {
+    if (!isProviderConfigured(provider)) {
+      continue
+    }
+
+    try {
+      if (provider === PROVIDERS.API_FOOTBALL) {
+        const client = getApiFootballClient()
+        const response = await client.get('/fixtures', {
+          params: { id: fixtureId }
+        }).catch(() => null)
+        
+        const match = response?.data?.response?.[0]
+        if (match?.fixture?.id) {
+          return buildApiFootballDetail(match)
+        }
+      } else if (provider === PROVIDERS.FOOTBALL_DATA) {
+        const client = getFootballDataClient()
+        const response = await client.get(`/matches/${fixtureId}`).catch(() => null)
+        const match = response?.data
+        
+        if (match?.id) {
+          return buildFootballDataDetail(match)
+        }
+      }
+    } catch (error) {
+      console.error(`Error fetching from ${provider}:`, error.message)
+      continue
+    }
+  }
+
+  return null
+}
+
+// Configuration function to set provider priority
+export function setProviderPriority(priority) {
+  if (Array.isArray(priority) && priority.every(p => Object.values(PROVIDERS).includes(p))) {
+    PROVIDER_PRIORITY = priority
   }
 }
 
-export async function getMatchDetails(fixtureId) {
-  const apiFootballKey = getApiFootballKey()
-
-  if (!apiFootballKey) {
-    return null
-  }
-
-  const fixture = await fetchFixtureById(fixtureId)
-  if (!fixture) {
-    return null
-  }
-
-  const model = await buildFixtureModel(fixture)
-
+// Function to get current provider status
+export function getProviderStatus() {
   return {
-    fixtureId: fixture.fixture?.id,
-    homeTeam: {
-      id: fixture.teams?.home?.id,
-      name: fixture.teams?.home?.name || 'Home Team',
-      logo: fixture.teams?.home?.logo || '',
+    providers: {
+      [PROVIDERS.FOOTBALL_DATA]: {
+        configured: isProviderConfigured(PROVIDERS.FOOTBALL_DATA),
+        key: getFootballDataKey() ? '***' : null
+      },
+      [PROVIDERS.API_FOOTBALL]: {
+        configured: isProviderConfigured(PROVIDERS.API_FOOTBALL),
+        key: getApiFootballKey() ? '***' : null
+      }
     },
-    awayTeam: {
-      id: fixture.teams?.away?.id,
-      name: fixture.teams?.away?.name || 'Away Team',
-      logo: fixture.teams?.away?.logo || '',
-    },
-    league: {
-      id: fixture.league?.id,
-      name: fixture.league?.name || 'League',
-      country: fixture.league?.country || '',
-      season: fixture.league?.season,
-      logo: fixture.league?.logo || '',
-    },
-    model,
+    priority: PROVIDER_PRIORITY
   }
 }

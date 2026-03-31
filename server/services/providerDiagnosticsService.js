@@ -5,6 +5,7 @@ function createProviderState() {
       upcoming: { status: 'idle', count: 0, message: '' },
       live: { status: 'idle', count: 0, message: '' },
       played: { status: 'idle', count: 0, message: '' },
+      details: { status: 'idle', count: 0, message: '' },
     },
   }
 }

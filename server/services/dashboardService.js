@@ -38,7 +38,7 @@ export async function getDashboardData(options = {}) {
     stack: {
       frontend: 'React + Tailwind',
       backend: 'Node.js + Express',
-      providers: ['API-Football', 'TheSportsDB', 'StatsBomb'],
+      providers: ['API-Football', 'Football-Data', 'TheSportsDB', 'StatsBomb'],
     },
   }
 }
