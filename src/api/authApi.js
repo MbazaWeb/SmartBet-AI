@@ -1,7 +1,8 @@
 import axios from 'axios'
+import { getApiBaseUrl } from './apiBaseUrl'
 
 const apiClient = axios.create({
-  baseURL: '/api/auth',
+  baseURL: getApiBaseUrl('/api/auth'),
 })
 
 function getErrorMessage(error) {
