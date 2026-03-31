@@ -10,8 +10,8 @@ function Prediction() {
     <main className="route-shell-enter mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
       <section className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
         <div className="glass-panel rounded-[32px] p-6 sm:p-8">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
               <p className="data-label text-xs uppercase text-emerald-400/80">Prediction page</p>
               <h2 className="mt-4 text-3xl font-bold tracking-tight text-white sm:text-5xl">
                 Live and upcoming predictions
@@ -21,12 +21,12 @@ function Prediction() {
               </p>
             </div>
 
-            <div className="flex flex-col items-start gap-3 sm:items-end">
+            <div className="flex flex-col items-start gap-3 lg:items-end">
               <button
                 type="button"
                 onClick={dashboard.handleManualRefresh}
                 disabled={dashboard.loading || dashboard.refreshing}
-                className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-5 py-3 text-sm font-medium text-emerald-100 transition hover:bg-emerald-500/15 disabled:cursor-not-allowed disabled:opacity-60"
+                className="w-full rounded-full border border-emerald-400/30 bg-emerald-500/10 px-5 py-3 text-sm font-medium text-emerald-100 transition hover:bg-emerald-500/15 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
               >
                 {dashboard.refreshing ? 'Refreshing...' : 'Refresh now'}
               </button>

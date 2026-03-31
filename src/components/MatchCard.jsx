@@ -219,27 +219,27 @@ function MatchCard({ match, prediction, analysis, intel, isNextMatch = false }) 
   const commentCount = comments.reduce((total, comment) => total + 1 + (comment.replies?.length ?? 0), 0)
 
   return (
-    <article className="glass-panel overflow-hidden rounded-[30px] border-white/10">
-      <div className="flex items-center justify-between gap-3 px-5 py-4 sm:px-6">
-        <div className="flex items-center gap-3">
+    <article className="glass-panel min-w-0 overflow-hidden rounded-[30px] border-white/10">
+      <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+        <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-gradient-to-br from-emerald-400 to-sky-400 text-sm font-bold text-slate-950 shadow-[0_8px_30px_rgba(16,185,129,0.25)]">
             {(analysis?.analyst?.name || 'AI').slice(0, 2).toUpperCase()}
           </div>
-          <div>
+          <div className="min-w-0">
             <p className="text-sm font-semibold text-white">{analysis?.analyst?.name || 'SmartBet AI'}</p>
-            <p className="text-xs text-slate-400">{analysis?.analyst?.handle || '@smartbet.ai'} · {formatKickoff(match.utcDate)}</p>
+            <p className="truncate text-xs text-slate-400">{analysis?.analyst?.handle || '@smartbet.ai'} · {formatKickoff(match.utcDate)}</p>
           </div>
         </div>
 
-        <button type="button" className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-slate-200 transition hover:bg-white/10">
+        <button type="button" className="self-start rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-slate-200 transition hover:bg-white/10 sm:self-auto">
           Following
         </button>
       </div>
 
       <div className="border-y border-white/10 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.22),_transparent_32%),linear-gradient(180deg,rgba(15,23,42,0.98),rgba(2,6,23,0.95))] px-5 py-6 sm:px-6">
-        <div className="flex items-center justify-between gap-3 text-xs uppercase tracking-[0.2em] text-slate-400">
-          <span>{match.competition.name}</span>
-          <div className="flex items-center gap-2">
+        <div className="flex flex-col gap-3 text-xs uppercase tracking-[0.2em] text-slate-400 sm:flex-row sm:items-center sm:justify-between">
+          <span className="break-words">{match.competition.name}</span>
+          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
             <span>{analysis?.liveStatus ? 'Live research' : 'Prematch research'}</span>
             <span className={["rounded-full border px-3 py-1 text-[10px] font-semibold tracking-[0.18em]", statusBadge.className].join(' ')}>
               {statusBadge.label}
@@ -247,18 +247,18 @@ function MatchCard({ match, prediction, analysis, intel, isNextMatch = false }) 
           </div>
         </div>
 
-        <div className="mt-5 flex items-center justify-between gap-4">
-          <div className="max-w-[40%]">
+        <div className="mt-5 grid gap-4 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:items-center">
+          <div className="order-2 min-w-0">
             <div className="flex items-center gap-3">
               {match.homeTeam.logo ? <img src={match.homeTeam.logo} alt="" className="h-10 w-10 rounded-full bg-white/10 p-1" /> : null}
-              <div>
-                <p className="text-lg font-semibold text-white sm:text-2xl">{match.homeTeam.name}</p>
+              <div className="min-w-0">
+                <p className="break-words text-base font-semibold text-white sm:text-2xl">{match.homeTeam.name}</p>
                 <p className="text-xs text-slate-400">Home</p>
               </div>
             </div>
           </div>
 
-          <div className="rounded-[28px] border border-emerald-400/25 bg-emerald-500/12 px-4 py-5 text-center shadow-[0_0_40px_rgba(34,197,94,0.08)]">
+          <div className="order-1 mx-auto w-full max-w-sm rounded-[28px] border border-emerald-400/25 bg-emerald-500/12 px-4 py-5 text-center shadow-[0_0_40px_rgba(34,197,94,0.08)] md:order-2 md:max-w-none">
             <p className="data-label text-[11px] uppercase text-emerald-200">Prediction style</p>
             <p className="mt-2 text-4xl font-bold tracking-tight text-emerald-300">{prediction[strongestOutcome]}%</p>
             <p className="mt-1 text-sm text-emerald-100">{outcomeLabels[strongestOutcome]}</p>
@@ -269,13 +269,13 @@ function MatchCard({ match, prediction, analysis, intel, isNextMatch = false }) 
             ) : null}
           </div>
 
-          <div className="max-w-[40%] text-right">
+          <div className="order-3 min-w-0 text-left md:text-right">
             <div className="flex items-center justify-end gap-3">
-              <div>
-                <p className="text-lg font-semibold text-white sm:text-2xl">{match.awayTeam.name}</p>
+              <div className="min-w-0 md:order-1">
+                <p className="break-words text-base font-semibold text-white sm:text-2xl">{match.awayTeam.name}</p>
                 <p className="text-xs text-slate-400">Away</p>
               </div>
-              {match.awayTeam.logo ? <img src={match.awayTeam.logo} alt="" className="h-10 w-10 rounded-full bg-white/10 p-1" /> : null}
+              {match.awayTeam.logo ? <img src={match.awayTeam.logo} alt="" className="h-10 w-10 shrink-0 rounded-full bg-white/10 p-1 md:order-2" /> : null}
             </div>
           </div>
         </div>
@@ -301,8 +301,8 @@ function MatchCard({ match, prediction, analysis, intel, isNextMatch = false }) 
       </div>
 
       <div className="px-5 py-4 sm:px-6">
-        <div className="flex items-center justify-between gap-3 text-sm text-slate-200">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-200">
+          <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
             onClick={handleToggleLike}
@@ -399,14 +399,14 @@ function MatchCard({ match, prediction, analysis, intel, isNextMatch = false }) 
             </div>
           </div>
 
-          <form onSubmit={handleAddComment} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-3">
+          <form onSubmit={handleAddComment} className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/5 p-3 sm:flex-row sm:items-center">
             <input
               value={commentDraft}
               onChange={(event) => setCommentDraft(event.target.value)}
               placeholder="Add a comment about this prediction"
-              className="flex-1 bg-transparent text-sm text-slate-100 outline-none placeholder:text-slate-500"
+              className="min-w-0 flex-1 bg-transparent text-sm text-slate-100 outline-none placeholder:text-slate-500"
             />
-            <button type="submit" className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-200">
+            <button type="submit" className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-200 sm:self-auto">
               Post
             </button>
           </form>
@@ -414,8 +414,8 @@ function MatchCard({ match, prediction, analysis, intel, isNextMatch = false }) 
           <div className="space-y-4">
             {comments.map((comment) => (
               <div key={comment.id} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
                     <p className="text-sm font-medium text-white">{comment.author}</p>
                     <p className="mt-1 text-sm leading-6 text-slate-300">{comment.text}</p>
                   </div>
@@ -440,14 +440,14 @@ function MatchCard({ match, prediction, analysis, intel, isNextMatch = false }) 
                 ) : null}
 
                 {replyingTo === comment.id ? (
-                  <div className="mt-3 flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-3">
+                  <div className="mt-3 flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/5 p-3 sm:flex-row sm:items-center">
                     <input
                       value={replyDrafts[comment.id] || ''}
                       onChange={(event) =>
                         setReplyDrafts((current) => ({ ...current, [comment.id]: event.target.value }))
                       }
                       placeholder="Reply to comment"
-                      className="flex-1 bg-transparent text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                      className="min-w-0 flex-1 bg-transparent text-sm text-slate-100 outline-none placeholder:text-slate-500"
                     />
                     <button
                       type="button"

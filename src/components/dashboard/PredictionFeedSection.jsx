@@ -72,7 +72,7 @@ export default function PredictionFeedSection({
         ) : null}
       </div>
 
-      <div className="mb-5 flex flex-wrap items-center gap-3">
+      <div className="mb-5 flex gap-3 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible">
         {feedTabs.map((tab) => {
           const isActive = activeFeedTab === tab.id
           const tabCount = feedSourceInsights[tab.id]?.length ?? 0
@@ -83,7 +83,7 @@ export default function PredictionFeedSection({
               type="button"
               onClick={() => handleFeedTabChange(tab.id)}
               className={[
-                'rounded-full border px-4 py-2 text-sm transition',
+                'shrink-0 rounded-full border px-4 py-2 text-sm transition',
                 isActive
                   ? 'border-sky-400/40 bg-sky-500/15 text-sky-100'
                   : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10',
@@ -105,7 +105,7 @@ export default function PredictionFeedSection({
               type="button"
               onClick={() => handleFilterChange(option.id)}
               className={[
-                'rounded-full border px-4 py-2 text-sm transition',
+                'shrink-0 rounded-full border px-4 py-2 text-sm transition',
                 isActive
                   ? 'border-emerald-400/40 bg-emerald-500/15 text-emerald-200'
                   : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10',
@@ -116,7 +116,7 @@ export default function PredictionFeedSection({
           )
         })}
 
-        <label className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
+        <label className="flex shrink-0 items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
           <span className="data-label text-[11px] uppercase text-slate-400">Date</span>
           <input
             type="date"
@@ -126,7 +126,7 @@ export default function PredictionFeedSection({
           />
         </label>
 
-        <label className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
+        <label className="flex shrink-0 items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
           <span className="data-label text-[11px] uppercase text-slate-400">Sort</span>
           <select
             value={sortMode}
