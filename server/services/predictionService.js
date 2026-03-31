@@ -216,6 +216,20 @@ function strongestOutcome(probabilities) {
   return { outcome, confidence }
 }
 
+function hasSparsePredictionInputs({
+  homeRecentMatches,
+  awayRecentMatches,
+  h2hMatches,
+  bookmakerOdds,
+}) {
+  return (
+    !homeRecentMatches?.length &&
+    !awayRecentMatches?.length &&
+    !h2hMatches?.length &&
+    !bookmakerOdds?.available
+  )
+}
+
 function buildValueBet(probabilities, bookmakerOdds) {
   if (!bookmakerOdds?.available || !bookmakerOdds.consensus?.impliedProbabilities || !bookmakerOdds.bestOdds) {
     return {
@@ -281,6 +295,12 @@ export function buildPredictionModel({
   awaySeasonStats,
   bookmakerOdds,
 }) {
+  const sparseInputs = hasSparsePredictionInputs({
+    homeRecentMatches,
+    awayRecentMatches,
+    h2hMatches,
+    bookmakerOdds,
+  })
   const safeLeagueAverage = clamp(parseNumber(leagueAverageGoals, 1.35), 0.8, 2.4)
   const homeVenueMatches = selectVenueMatches(homeRecentMatches, 'home')
   const awayVenueMatches = selectVenueMatches(awayRecentMatches, 'away')
@@ -319,6 +339,92 @@ export function buildPredictionModel({
   const awayH2hRaw = h2hScore(h2hMatches, awayTeam.id)
   const homeH2h = round((homeH2hRaw + 1) / 2)
   const awayH2h = round((awayH2hRaw + 1) / 2)
+
+  if (sparseInputs) {
+    const neutralProbabilities = { home: 33, draw: 34, away: 33 }
+    const neutralValueBet = buildValueBet(
+      {
+        home: neutralProbabilities.home / 100,
+        draw: neutralProbabilities.draw / 100,
+        away: neutralProbabilities.away / 100,
+      },
+      bookmakerOdds,
+    )
+
+    return {
+      prediction: 'UNSTABLE',
+      confidence: 34,
+      strongestOutcome: 'draw',
+      probabilities: neutralProbabilities,
+      expectedGoals: {
+        home: 1.1,
+        away: 1.1,
+      },
+      exactScore: {
+        home: 1,
+        away: 1,
+      },
+      form: {
+        home: 0.5,
+        away: 0.5,
+      },
+      strengths: {
+        attack: {
+          home: 1,
+          away: 1,
+        },
+        defense: {
+          home: 1,
+          away: 1,
+        },
+      },
+      context: {
+        homeBoost: 1,
+        awayPenalty: 1,
+        dynamicHomeAdvantage: 1,
+        h2h: {
+          home: 0,
+          away: 0,
+          matches: 0,
+        },
+        homePerformance: homeSeasonStats.homePerformance,
+        awayPerformance: awaySeasonStats.awayPerformance,
+        sparseInputs: true,
+      },
+      season: {
+        leagueAverageGoals: safeLeagueAverage,
+        home: homeSeasonStats,
+        away: awaySeasonStats,
+      },
+      finalScores: {
+        home: 1.1,
+        away: 1.1,
+      },
+      recentMatches: {
+        home: homeVenueMatches,
+        away: awayVenueMatches,
+      },
+      weightedForm: {
+        homeGoalsFor: 1.1,
+        homeGoalsAgainst: 1.1,
+        awayGoalsFor: 1.1,
+        awayGoalsAgainst: 1.1,
+      },
+      venueForm: {
+        home: 0.5,
+        away: 0.5,
+        homeSample: 0,
+        awaySample: 0,
+      },
+      consistency: {
+        homeVariance: 0,
+        awayVariance: 0,
+      },
+      stability: 'UNSTABLE',
+      uncertainty: true,
+      valueBet: neutralValueBet,
+    }
+  }
 
   const expectedGoalsHome = round(
     clamp((adjustedHomeAttack * 0.52 + homeForm * 0.18 + homeH2h * 0.12 + homeBoost * 0.18) * safeLeagueAverage, 0.2, 4.2),
