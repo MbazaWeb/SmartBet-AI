@@ -1,19 +1,34 @@
+// src/App.tsx
 import { lazy, Suspense, useEffect } from 'react'
+import { Route, Routes, useLocation } from 'react-router-dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import Header from './components/Header'
 import { SkeletonBlock } from './components/ui/Skeleton'
-import Home from './pages/Home'
-import { Route, Routes, useLocation } from 'react-router-dom'
-import { loadPredictionRoute, loadResultsRoute } from './lib/routeLoader'
+import { AuthProvider } from './context/AuthContext'
 
-const Results = lazy(loadResultsRoute)
-const Prediction = lazy(loadPredictionRoute)
+// Preload critical routes
+const Home = lazy(() => import('./pages/Home'))
+const Results = lazy(() => import('./pages/Results'))
+const Prediction = lazy(() => import('./pages/Prediction'))
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 60 * 1000, // 1 minute
+      gcTime: 5 * 60 * 1000, // 5 minutes
+      retry: 1,
+      refetchOnWindowFocus: false,
+    },
+  },
+})
 
 function ScrollToTop() {
-  const location = useLocation()
+  const { pathname } = useLocation()
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' })
-  }, [location.pathname])
+  }, [pathname])
 
   return null
 }
@@ -42,20 +57,23 @@ function RouteFallback() {
   )
 }
 
-function App() {
+export default function App() {
   return (
-    <div className="relative min-h-screen overflow-hidden bg-transparent pb-24 text-slate-100 sm:pb-0">
-      <Header />
-      <Suspense fallback={<RouteFallback />}>
-        <ScrollToTop />
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/results" element={<Results />} />
-          <Route path="/prediction" element={<Prediction />} />
-        </Routes>
-      </Suspense>
-    </div>
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <div className="relative min-h-screen overflow-hidden bg-transparent pb-24 text-slate-100 sm:pb-0">
+          <Header />
+          <Suspense fallback={<RouteFallback />}>
+            <ScrollToTop />
+            <Routes>
+              <Route path="/" element={<Home />} />
+              <Route path="/results" element={<Results />} />
+              <Route path="/prediction" element={<Prediction />} />
+            </Routes>
+          </Suspense>
+        </div>
+      </AuthProvider>
+      <ReactQueryDevtools initialIsOpen={false} />
+    </QueryClientProvider>
   )
 }
-
-export default App
