@@ -82,6 +82,83 @@ function Prediction() {
           </Suspense>
         </section>
 
+        <section className="mt-8">
+          <div className="glass-panel rounded-[32px] p-6 sm:p-8">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="data-label text-xs uppercase text-amber-300/80">Prediction of the day</p>
+                <h2 className="mt-3 text-2xl font-semibold text-white sm:text-3xl">Top 5 match calls</h2>
+                <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
+                  The page prioritizes five strongest live and upcoming match predictions. Calls above 80% confidence are shown first, then the next-best matches fill the list if fewer than five clear that threshold.
+                </p>
+              </div>
+              <div className="rounded-2xl border border-amber-400/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+                Target: 5 matches with 80%+ confidence
+              </div>
+            </div>
+
+            {dashboard.loading ? (
+              <div className="mt-6 grid gap-4 lg:grid-cols-5 sm:grid-cols-2">
+                {[1, 2, 3, 4, 5].map((item) => (
+                  <div key={item} className="rounded-[28px] border border-white/10 bg-white/5 p-5 animate-pulse">
+                    <div className="h-4 w-20 rounded bg-white/10"></div>
+                    <div className="mt-4 h-6 w-3/4 rounded bg-white/10"></div>
+                    <div className="mt-3 h-4 w-full rounded bg-white/10"></div>
+                    <div className="mt-6 h-10 w-24 rounded bg-white/10"></div>
+                  </div>
+                ))}
+              </div>
+            ) : dashboard.predictionOfTheDayMatches.length > 0 ? (
+              <div className="mt-6 grid gap-4 lg:grid-cols-5 sm:grid-cols-2">
+                {dashboard.predictionOfTheDayMatches.map((match, index) => {
+                  const kickoff = new Date(match.utcDate).toLocaleString('en-GB', {
+                    day: '2-digit',
+                    month: 'short',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })
+
+                  return (
+                    <article
+                      key={match.id}
+                      className="rounded-[28px] border border-white/10 bg-white/5 p-5 transition hover:bg-white/10"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] uppercase tracking-wide text-slate-400">
+                          Match {index + 1}
+                        </span>
+                        <span className={`rounded-full px-3 py-1 text-xs font-medium ${match.strongestValue >= 80 ? 'border border-emerald-400/20 bg-emerald-500/10 text-emerald-200' : 'border border-amber-400/20 bg-amber-500/10 text-amber-100'}`}>
+                          {match.strongestValue}%
+                        </span>
+                      </div>
+
+                      <p className="mt-4 text-sm text-slate-400">{match.competition?.name || 'Competition pending'}</p>
+                      <h3 className="mt-2 text-lg font-semibold leading-6 text-white">
+                        {match.homeTeam?.name} vs {match.awayTeam?.name}
+                      </h3>
+                      <p className="mt-3 text-sm text-slate-400">Kickoff {kickoff}</p>
+
+                      <div className="mt-5 rounded-2xl border border-white/10 bg-slate-950/30 p-4">
+                        <p className="data-label text-[11px] uppercase text-slate-500">Strongest angle</p>
+                        <p className="mt-2 text-base font-medium text-emerald-300">
+                          {dashboard.outcomeLabels?.[match.strongestOutcome] || 'Outcome pending'}
+                        </p>
+                        <p className="mt-2 text-sm leading-6 text-slate-400 line-clamp-3">
+                          {match.analysis?.caption || 'Model confidence is driving this pick while richer analysis is still loading.'}
+                        </p>
+                      </div>
+                    </article>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="mt-6 rounded-[28px] border border-white/10 bg-white/5 p-6 text-center text-slate-400">
+                No prediction-of-the-day matches are available yet.
+              </div>
+            )}
+          </div>
+        </section>
+
         {/* Main Content Section */}
         <section className="mt-8 grid gap-6 xl:grid-cols-[230px_minmax(0,1fr)]">
           <aside className="hidden xl:block">

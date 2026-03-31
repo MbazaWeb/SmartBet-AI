@@ -217,7 +217,23 @@ export default function useDashboardData() {
   }, [filteredFeedInsights, sortMode])
 
   const visibleMatches = sortedFilteredInsights.slice(0, visibleCount)
-  const topPredictions = [...predictionFeedInsights].sort(compareByConfidence).slice(0, 3)
+  const sortedPredictionFeedInsights = useMemo(
+    () => [...predictionFeedInsights].sort(compareByConfidence),
+    [predictionFeedInsights]
+  )
+  const predictionOfTheDayMatches = useMemo(() => {
+    const highConfidenceMatches = sortedPredictionFeedInsights.filter((match) => (match.strongestValue || 0) >= 80)
+
+    if (highConfidenceMatches.length >= 5) {
+      return highConfidenceMatches.slice(0, 5)
+    }
+
+    const usedIds = new Set(highConfidenceMatches.map((match) => match.id))
+    const fallbackMatches = sortedPredictionFeedInsights.filter((match) => !usedIds.has(match.id))
+
+    return [...highConfidenceMatches, ...fallbackMatches].slice(0, 5)
+  }, [sortedPredictionFeedInsights])
+  const topPredictions = predictionOfTheDayMatches
   const nextUpcomingMatch = nextMatch ?? matches[0] ?? null
   const recentPlayedMatches = playedMatches.slice(0, 3)
   const liveTrackerMatches = liveMatches.slice(0, 3)
@@ -397,6 +413,7 @@ export default function useDashboardData() {
     selectedFeedInsights,
     feedSourceInsights,
     topPredictions,
+    predictionOfTheDayMatches,
     nextUpcomingMatch,
     recentPlayedMatches,
     liveTrackerMatches,
