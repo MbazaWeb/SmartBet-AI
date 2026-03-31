@@ -2,7 +2,6 @@
 import { lazy, Suspense, useEffect } from 'react'
 import { Route, Routes, useLocation } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import Header from './components/Header'
 import { SkeletonBlock } from './components/ui/Skeleton'
 import { AuthProvider } from './context/AuthContext'
@@ -73,7 +72,6 @@ export default function App() {
           </Suspense>
         </div>
       </AuthProvider>
-      <ReactQueryDevtools initialIsOpen={false} />
     </QueryClientProvider>
   )
 }
