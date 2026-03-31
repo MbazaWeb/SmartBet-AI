@@ -163,7 +163,7 @@ export function AuthProvider({ children }) {
       }
     } catch (error) {
       if (error.message === 'Failed to fetch') {
-        setAuthError('Authentication request was blocked before reaching the backend. Check that the API server is running on port 8787, then retry.')
+        setAuthError('Authentication request could not reach Supabase. Check your connection and confirm the Supabase project is available, then retry.')
       } else {
         setAuthError(error.message || 'Authentication failed.')
       }

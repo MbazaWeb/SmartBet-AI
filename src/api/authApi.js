@@ -1,22 +1,33 @@
-import axios from 'axios'
-import { getApiBaseUrl } from './apiBaseUrl'
-
-const apiClient = axios.create({
-  baseURL: getApiBaseUrl('/api/auth'),
-})
+import { isSupabaseConfigured, supabase } from '../lib/supabase'
 
 function getErrorMessage(error) {
-  if (axios.isAxiosError(error)) {
-    return error.response?.data?.message || 'Unable to reach the authentication service.'
-  }
-
-  return 'Unable to reach the authentication service.'
+  return error?.message || 'Unable to reach the authentication service.'
 }
 
 export async function signUp({ email, password }) {
   try {
-    const response = await apiClient.post('/signup', { email, password })
-    return response.data
+    if (!isSupabaseConfigured || !supabase) {
+      throw new Error('Supabase auth is not configured.')
+    }
+
+    const { data, error } = await supabase.auth.signUp({ email, password })
+
+    if (error) {
+      throw error
+    }
+
+    return {
+      user: data.user ?? null,
+      session: data.session
+        ? {
+            access_token: data.session.access_token,
+            refresh_token: data.session.refresh_token,
+          }
+        : null,
+      message: data.session
+        ? 'Account created and signed in.'
+        : 'Check your email to confirm the account, then sign in.',
+    }
   } catch (error) {
     throw new Error(getErrorMessage(error))
   }
@@ -24,8 +35,25 @@ export async function signUp({ email, password }) {
 
 export async function signIn({ email, password }) {
   try {
-    const response = await apiClient.post('/signin', { email, password })
-    return response.data
+    if (!isSupabaseConfigured || !supabase) {
+      throw new Error('Supabase auth is not configured.')
+    }
+
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+
+    if (error) {
+      throw error
+    }
+
+    return {
+      session: data.session
+        ? {
+            access_token: data.session.access_token,
+            refresh_token: data.session.refresh_token,
+          }
+        : null,
+      user: data.user ?? null,
+    }
   } catch (error) {
     throw new Error(getErrorMessage(error))
   }
