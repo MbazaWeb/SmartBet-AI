@@ -323,6 +323,27 @@ function buildApiFootballDetail(match) {
   }
 }
 
+function buildDetailFromFixture(match) {
+  if (!match) {
+    return null
+  }
+
+  return {
+    fixtureId: match.id,
+    homeTeam: match.homeTeam,
+    awayTeam: match.awayTeam,
+    league: {
+      id: match.competition?.id ?? null,
+      name: match.competition?.name || 'Competition',
+      country: match.competition?.country || '',
+      season: match.season ?? null,
+      logo: match.competition?.logo || '',
+    },
+    model: match.model ?? null,
+    provider: match.source || 'derived-fixture',
+  }
+}
+
 // Provider-specific fetch functions
 async function fetchFootballDataMatches(params, phase, options = {}) {
   const diagnostics = options.diagnostics
@@ -620,7 +641,24 @@ export async function getPlayedFixtures(options = {}) {
 }
 
 export async function getMatchDetails(fixtureId) {
-  return getMatchDetailsFromFootballData(fixtureId)
+  const detail = await getMatchDetailsFromFootballData(fixtureId)
+
+  if (detail) {
+    return detail
+  }
+
+  const normalizedFixtureId = String(fixtureId)
+  const [upcomingMatches, liveMatches, playedMatches] = await Promise.all([
+    getUpcomingFixturesFromFootballData(),
+    getLiveFixturesFromFootballData(),
+    getPlayedFixturesFromFootballData(),
+  ])
+
+  const fallbackMatch = [...liveMatches, ...upcomingMatches, ...playedMatches].find(
+    (match) => String(match.id) === normalizedFixtureId,
+  )
+
+  return buildDetailFromFixture(fallbackMatch)
 }
 
 // Configuration function to set provider priority
