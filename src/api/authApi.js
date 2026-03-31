@@ -1,7 +1,29 @@
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 
 function getErrorMessage(error) {
-  return error?.message || 'Unable to reach the authentication service.'
+  if (!error) {
+    return 'Authentication failed.'
+  }
+
+  if (typeof error.message === 'string' && error.message.trim()) {
+    return error.message
+  }
+
+  if (typeof error.code === 'string' && error.code === 'invalid_credentials') {
+    return 'Invalid login credentials.'
+  }
+
+  if (typeof error.status === 'number') {
+    if (error.status === 400 || error.status === 401) {
+      return 'Invalid login credentials.'
+    }
+
+    if (error.status >= 500) {
+      return 'Authentication service is temporarily unavailable.'
+    }
+  }
+
+  return 'Authentication failed.'
 }
 
 export async function signUp({ email, password }) {
@@ -43,6 +65,10 @@ export async function signIn({ email, password }) {
 
     if (error) {
       throw error
+    }
+
+    if (!data.session?.access_token || !data.session?.refresh_token) {
+      throw new Error('Authentication succeeded but no session was returned.')
     }
 
     return {
