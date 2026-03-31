@@ -1,13 +1,16 @@
 import { getLiveFixtures, getPlayedFixtures, getUpcomingFixtures } from './apiFootballService.js'
 import { buildAiAnalysis } from './aiAnalysisService.js'
 import { mergeDashboardFixtures } from './fixtureSnapshotService.js'
+import { createProviderDiagnostics } from './providerDiagnosticsService.js'
 import { getTeamIntel } from './sportsDbService.js'
 import { getTrainingSummary } from './statsBombService.js'
 
 export async function getDashboardData(options = {}) {
-  const fetchedMatches = await Promise.resolve(getUpcomingFixtures(options)).catch(() => [])
-  const fetchedLiveMatches = await Promise.resolve(getLiveFixtures(options)).catch(() => [])
-  const fetchedPlayedMatches = await Promise.resolve(getPlayedFixtures(options)).catch(() => [])
+  const diagnostics = createProviderDiagnostics()
+  const requestOptions = { ...options, diagnostics }
+  const fetchedMatches = await Promise.resolve(getUpcomingFixtures(requestOptions)).catch(() => [])
+  const fetchedLiveMatches = await Promise.resolve(getLiveFixtures(requestOptions)).catch(() => [])
+  const fetchedPlayedMatches = await Promise.resolve(getPlayedFixtures(requestOptions)).catch(() => [])
   const { matches, liveMatches, playedMatches, nextMatch, dataStatus } = mergeDashboardFixtures({
     matches: fetchedMatches,
     liveMatches: fetchedLiveMatches,
@@ -28,7 +31,10 @@ export async function getDashboardData(options = {}) {
     aiAnalysis: aiModel.analysisFeed,
     livePolls: aiModel.pollTopics,
     researchDigest: aiModel.researchDigest,
-    dataStatus,
+    dataStatus: {
+      ...dataStatus,
+      providerDiagnostics: diagnostics,
+    },
     stack: {
       frontend: 'React + Tailwind',
       backend: 'Node.js + Express',

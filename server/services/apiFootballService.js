@@ -2,6 +2,7 @@ import axios from 'axios'
 import NodeCache from 'node-cache'
 import { getUpcomingFixturesFromFootballData } from './footballDataService.js'
 import { buildPredictionModel } from './predictionService.js'
+import { markProviderConfigured, updateProviderPhase } from './providerDiagnosticsService.js'
 
 const API_FOOTBALL_BASE_URL = 'https://v3.football.api-sports.io'
 const MAX_FIXTURES = 30
@@ -751,10 +752,17 @@ function normalizeLiveFixture(fixture) {
 }
 
 export async function getUpcomingFixtures(options = {}) {
+  const diagnostics = options.diagnostics
   const apiFootballKey = getApiFootballKey()
+  markProviderConfigured(diagnostics, 'apiFootball', Boolean(apiFootballKey))
 
   if (!apiFootballKey) {
-    return getUpcomingFixturesFromFootballData()
+    updateProviderPhase(diagnostics, 'apiFootball', 'upcoming', {
+      status: 'skipped',
+      count: 0,
+      message: 'Missing API_FOOTBALL_KEY.',
+    })
+    return getUpcomingFixturesFromFootballData(options)
   }
 
   const response = await cachedApiGet(
@@ -769,25 +777,57 @@ export async function getUpcomingFixtures(options = {}) {
     },
   ).catch(async (error) => {
     if (error.message.includes('Next parameter')) {
+      updateProviderPhase(diagnostics, 'apiFootball', 'upcoming', {
+        status: 'fallback',
+        count: 0,
+        message: 'API-Football rejected the next parameter. Falling back to date-window scan.',
+      })
       return fetchUpcomingFixturesByDateWindow(options)
     }
 
     if (isRateLimitError(error)) {
-      return getUpcomingFixturesFromFootballData()
+      updateProviderPhase(diagnostics, 'apiFootball', 'upcoming', {
+        status: 'fallback',
+        count: 0,
+        message: 'API-Football rate limit reached. Falling back to Football-Data.',
+      })
+      return getUpcomingFixturesFromFootballData(options)
     }
+
+    updateProviderPhase(diagnostics, 'apiFootball', 'upcoming', {
+      status: 'error',
+      count: 0,
+      message: error.response?.data?.message || error.message || 'API-Football request failed.',
+    })
 
     throw error
   })
 
   if (response[0]?.source === 'football-data') {
+    updateProviderPhase(diagnostics, 'apiFootball', 'upcoming', {
+      status: 'fallback',
+      count: 0,
+      message: 'Using Football-Data fallback because API-Football did not provide fixtures.',
+    })
     return response
   }
 
   const fixtures = response.slice(0, MAX_FIXTURES)
 
   if (!fixtures.length) {
-    return getUpcomingFixturesFromFootballData()
+    updateProviderPhase(diagnostics, 'apiFootball', 'upcoming', {
+      status: 'empty',
+      count: 0,
+      message: 'API-Football returned no upcoming fixtures.',
+    })
+    return getUpcomingFixturesFromFootballData(options)
   }
+
+  updateProviderPhase(diagnostics, 'apiFootball', 'upcoming', {
+    status: 'success',
+    count: fixtures.length,
+    message: 'API-Football returned upcoming fixtures.',
+  })
 
   const statsCache = new Map()
 
@@ -806,9 +846,16 @@ export async function getUpcomingFixtures(options = {}) {
 }
 
 export async function getLiveFixtures(options = {}) {
+  const diagnostics = options.diagnostics
   const apiFootballKey = getApiFootballKey()
+  markProviderConfigured(diagnostics, 'apiFootball', Boolean(apiFootballKey))
 
   if (!apiFootballKey) {
+    updateProviderPhase(diagnostics, 'apiFootball', 'live', {
+      status: 'skipped',
+      count: 0,
+      message: 'Missing API_FOOTBALL_KEY.',
+    })
     return []
   }
 
@@ -825,16 +872,34 @@ export async function getLiveFixtures(options = {}) {
       },
     )
 
+    updateProviderPhase(diagnostics, 'apiFootball', 'live', {
+      status: response.length ? 'success' : 'empty',
+      count: response.length,
+      message: response.length ? 'API-Football returned live fixtures.' : 'API-Football returned no live fixtures.',
+    })
+
     return response.map(normalizeLiveFixture)
-  } catch {
+  } catch (error) {
+    updateProviderPhase(diagnostics, 'apiFootball', 'live', {
+      status: 'error',
+      count: 0,
+      message: error.response?.data?.message || error.message || 'API-Football live request failed.',
+    })
     return []
   }
 }
 
 export async function getPlayedFixtures(options = {}) {
+  const diagnostics = options.diagnostics
   const apiFootballKey = getApiFootballKey()
+  markProviderConfigured(diagnostics, 'apiFootball', Boolean(apiFootballKey))
 
   if (!apiFootballKey) {
+    updateProviderPhase(diagnostics, 'apiFootball', 'played', {
+      status: 'skipped',
+      count: 0,
+      message: 'Missing API_FOOTBALL_KEY.',
+    })
     return []
   }
 
@@ -866,7 +931,23 @@ export async function getPlayedFixtures(options = {}) {
         return normalizeFixture({ ...fixture, model }, homeStats, awayStats)
       }),
     )
-  } catch {
+      .then((normalizedFixtures) => {
+        updateProviderPhase(diagnostics, 'apiFootball', 'played', {
+          status: normalizedFixtures.length ? 'success' : 'empty',
+          count: normalizedFixtures.length,
+          message: normalizedFixtures.length
+            ? 'API-Football returned recently played fixtures.'
+            : 'API-Football returned no recently played fixtures.',
+        })
+
+        return normalizedFixtures
+      })
+  } catch (error) {
+    updateProviderPhase(diagnostics, 'apiFootball', 'played', {
+      status: 'error',
+      count: 0,
+      message: error.response?.data?.message || error.message || 'API-Football played fixtures request failed.',
+    })
     return []
   }
 }

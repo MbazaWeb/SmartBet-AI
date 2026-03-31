@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { buildPredictionModel } from './predictionService.js'
+import { markProviderConfigured, updateProviderPhase } from './providerDiagnosticsService.js'
 
 const FOOTBALL_DATA_BASE_URL = 'https://api.football-data.org/v4'
 const MAX_FALLBACK_FIXTURES = 30
@@ -148,10 +149,17 @@ function normalizeFootballDataFixture(match) {
   }
 }
 
-export async function getUpcomingFixturesFromFootballData() {
+export async function getUpcomingFixturesFromFootballData(options = {}) {
+  const diagnostics = options.diagnostics
   const footballDataKey = getFootballDataKey()
+  markProviderConfigured(diagnostics, 'footballData', Boolean(footballDataKey))
 
   if (!footballDataKey) {
+    updateProviderPhase(diagnostics, 'footballData', 'upcoming', {
+      status: 'skipped',
+      count: 0,
+      message: 'Missing FOOTBALL_DATA_API_KEY or VITE_FOOTBALL_DATA_API_KEY.',
+    })
     return []
   }
 
@@ -163,13 +171,29 @@ export async function getUpcomingFixturesFromFootballData() {
       dateFrom,
       dateTo,
     },
-  }).catch(() => null)
+  }).catch((error) => {
+    updateProviderPhase(diagnostics, 'footballData', 'upcoming', {
+      status: 'error',
+      count: 0,
+      message: error.response?.data?.message || error.message || 'Football-Data request failed.',
+    })
+    return null
+  })
 
   const matches = response?.data?.matches ?? []
-
-  return matches
+  const normalizedMatches = matches
     .filter((match) => !['FINISHED', 'CANCELLED', 'POSTPONED', 'SUSPENDED'].includes(match.status))
     .sort((left, right) => new Date(left.utcDate) - new Date(right.utcDate))
     .slice(0, MAX_FALLBACK_FIXTURES)
     .map(normalizeFootballDataFixture)
+
+  updateProviderPhase(diagnostics, 'footballData', 'upcoming', {
+    status: normalizedMatches.length ? 'success' : 'empty',
+    count: normalizedMatches.length,
+    message: normalizedMatches.length
+      ? 'Football-Data returned fallback upcoming fixtures.'
+      : 'Football-Data returned no upcoming fixtures for the current date window.',
+  })
+
+  return normalizedMatches
 }
