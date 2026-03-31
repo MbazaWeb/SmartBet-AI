@@ -607,6 +607,22 @@ export async function getMatchDetailsFromFootballData(fixtureId) {
   return null
 }
 
+export async function getUpcomingFixtures(options = {}) {
+  return getUpcomingFixturesFromFootballData(options)
+}
+
+export async function getLiveFixtures(options = {}) {
+  return getLiveFixturesFromFootballData(options)
+}
+
+export async function getPlayedFixtures(options = {}) {
+  return getPlayedFixturesFromFootballData(options)
+}
+
+export async function getMatchDetails(fixtureId) {
+  return getMatchDetailsFromFootballData(fixtureId)
+}
+
 // Configuration function to set provider priority
 export function setProviderPriority(priority) {
   if (Array.isArray(priority) && priority.every(p => Object.values(PROVIDERS).includes(p))) {
