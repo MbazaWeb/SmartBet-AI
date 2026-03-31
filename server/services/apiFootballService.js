@@ -649,9 +649,9 @@ export async function getMatchDetails(fixtureId) {
 
   const normalizedFixtureId = String(fixtureId)
   const [upcomingMatches, liveMatches, playedMatches] = await Promise.all([
-    getUpcomingFixturesFromFootballData(),
-    getLiveFixturesFromFootballData(),
-    getPlayedFixturesFromFootballData(),
+    getUpcomingFixturesFromFootballData({ useAllProviders: true }),
+    getLiveFixturesFromFootballData({ useAllProviders: true }),
+    getPlayedFixturesFromFootballData({ useAllProviders: true }),
   ])
 
   const fallbackMatch = [...liveMatches, ...upcomingMatches, ...playedMatches].find(
