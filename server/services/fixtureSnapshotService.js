@@ -1,13 +1,18 @@
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 
-const SNAPSHOT_FILE_PATH = path.resolve(process.cwd(), 'server/data/fixture-snapshot.json')
-const SNAPSHOT_BACKUP_FILE_PATH = path.resolve(process.cwd(), 'server/data/fixture-snapshot-backup.json')
+const isServerlessRuntime = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME)
+const snapshotDirectory = isServerlessRuntime
+  ? path.join(os.tmpdir(), 'smartbet-ai', 'server-data')
+  : path.resolve(process.cwd(), 'server/data')
+const SNAPSHOT_FILE_PATH = path.join(snapshotDirectory, 'fixture-snapshot.json')
+const SNAPSHOT_BACKUP_FILE_PATH = path.join(snapshotDirectory, 'fixture-snapshot-backup.json')
 const ACTIVE_RETENTION_DAYS = 7
 const PLAYED_RETENTION_DAYS = 21
 
 function ensureSnapshotDirectory() {
-  fs.mkdirSync(path.dirname(SNAPSHOT_FILE_PATH), { recursive: true })
+  fs.mkdirSync(snapshotDirectory, { recursive: true })
 }
 
 function defaultSnapshot() {
@@ -17,7 +22,11 @@ function defaultSnapshot() {
 }
 
 function readSnapshot() {
-  ensureSnapshotDirectory()
+  try {
+    ensureSnapshotDirectory()
+  } catch {
+    return defaultSnapshot()
+  }
 
   if (!fs.existsSync(SNAPSHOT_FILE_PATH)) {
     return defaultSnapshot()
@@ -32,12 +41,21 @@ function readSnapshot() {
 }
 
 function writeSnapshot(snapshot) {
-  ensureSnapshotDirectory()
-  fs.writeFileSync(SNAPSHOT_FILE_PATH, JSON.stringify(snapshot, null, 2), 'utf8')
+  try {
+    ensureSnapshotDirectory()
+    fs.writeFileSync(SNAPSHOT_FILE_PATH, JSON.stringify(snapshot, null, 2), 'utf8')
+    return true
+  } catch {
+    return false
+  }
 }
 
 function readBackupSnapshot() {
-  ensureSnapshotDirectory()
+  try {
+    ensureSnapshotDirectory()
+  } catch {
+    return defaultSnapshot()
+  }
 
   if (!fs.existsSync(SNAPSHOT_BACKUP_FILE_PATH)) {
     return defaultSnapshot()
@@ -52,8 +70,13 @@ function readBackupSnapshot() {
 }
 
 function writeBackupSnapshot(snapshot) {
-  ensureSnapshotDirectory()
-  fs.writeFileSync(SNAPSHOT_BACKUP_FILE_PATH, JSON.stringify(snapshot, null, 2), 'utf8')
+  try {
+    ensureSnapshotDirectory()
+    fs.writeFileSync(SNAPSHOT_BACKUP_FILE_PATH, JSON.stringify(snapshot, null, 2), 'utf8')
+    return true
+  } catch {
+    return false
+  }
 }
 
 function dateToMs(value) {
@@ -105,6 +128,7 @@ export function mergeDashboardFixtures({ matches = [], liveMatches = [], playedM
   const nowIso = new Date().toISOString()
   const currentFixtures = [...matches, ...liveMatches, ...playedMatches]
   let restoredFromBackup = false
+  let persistenceEnabled = true
 
   if (!currentFixtures.length && !Object.keys(snapshot.fixtures).length) {
     const backupSnapshot = readBackupSnapshot()
@@ -112,7 +136,7 @@ export function mergeDashboardFixtures({ matches = [], liveMatches = [], playedM
     if (Object.keys(backupSnapshot.fixtures).length) {
       snapshot = backupSnapshot
       restoredFromBackup = true
-      writeSnapshot(backupSnapshot)
+      persistenceEnabled = writeSnapshot(backupSnapshot)
     }
   }
 
@@ -135,10 +159,10 @@ export function mergeDashboardFixtures({ matches = [], liveMatches = [], playedM
     Object.entries(snapshot.fixtures).filter(([, entry]) => shouldKeepFixture(entry, now)),
   )
 
-  writeSnapshot(snapshot)
+  persistenceEnabled = writeSnapshot(snapshot) && persistenceEnabled
 
   if (currentFixtures.length) {
-    writeBackupSnapshot(snapshot)
+    persistenceEnabled = writeBackupSnapshot(snapshot) && persistenceEnabled
   }
 
   const allFixtures = Object.values(snapshot.fixtures).map((entry) => entry.fixture)
@@ -169,6 +193,8 @@ export function mergeDashboardFixtures({ matches = [], liveMatches = [], playedM
       lastSnapshotAt,
       providerSources,
       restoredFromBackup,
+      persistenceEnabled,
+      persistenceMode: isServerlessRuntime ? 'temporary' : 'filesystem',
     },
   }
 }
