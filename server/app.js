@@ -6,6 +6,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { getDashboardData } from './services/dashboardService.js'
 import { getLiveFixtures, getMatchDetails, getUpcomingFixtures } from './services/apiFootballService.js'
+import { getRuntimeDebugInfo } from './services/runtimeDebugService.js'
 import { getTeamIntel } from './services/sportsDbService.js'
 import { getTrainingSummary } from './services/statsBombService.js'
 import { isSupabaseAuthConfigured, signInWithEmail, signUpWithEmail } from './services/supabaseAuthService.js'
@@ -23,6 +24,10 @@ app.use(express.json())
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok' })
+})
+
+app.get('/api/debug/runtime', (_req, res) => {
+  res.json(getRuntimeDebugInfo())
 })
 
 app.get('/api/auth/health', (_req, res) => {
