@@ -1,7 +1,8 @@
 import { getSupabaseServerClient, isSupabaseServerConfigured } from './supabaseServerService.js'
 
 const SNAPSHOT_TABLE = 'fixture_snapshots'
-const ACTIVE_RETENTION_DAYS = 7
+const ACTIVE_RETENTION_DAYS = 14
+const LIVE_RETENTION_DAYS = 2
 const PLAYED_RETENTION_DAYS = 21
 
 function defaultSnapshot() {
@@ -114,6 +115,30 @@ function dateToMs(value) {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
+function hasValue(value) {
+  if (value === null || value === undefined) {
+    return false
+  }
+
+  if (typeof value === 'string') {
+    return value.trim().length > 0
+  }
+
+  if (Array.isArray(value)) {
+    return value.length > 0
+  }
+
+  if (typeof value === 'object') {
+    return Object.keys(value).length > 0
+  }
+
+  return true
+}
+
+function preferIncoming(incomingValue, existingValue) {
+  return hasValue(incomingValue) ? incomingValue : existingValue
+}
+
 function mergeFixture(existingFixture, incomingFixture) {
   if (!existingFixture) {
     return incomingFixture
@@ -122,24 +147,35 @@ function mergeFixture(existingFixture, incomingFixture) {
   return {
     ...existingFixture,
     ...incomingFixture,
-    competition: incomingFixture.competition ?? existingFixture.competition,
-    score: incomingFixture.score ?? existingFixture.score,
-    homeTeam: incomingFixture.homeTeam ?? existingFixture.homeTeam,
-    awayTeam: incomingFixture.awayTeam ?? existingFixture.awayTeam,
-    homeStats: incomingFixture.homeStats ?? existingFixture.homeStats,
-    awayStats: incomingFixture.awayStats ?? existingFixture.awayStats,
-    model: existingFixture.model ?? incomingFixture.model ?? null,
-    bookmakerOdds: existingFixture.bookmakerOdds ?? incomingFixture.bookmakerOdds ?? null,
+    competition: preferIncoming(incomingFixture.competition, existingFixture.competition),
+    venue: preferIncoming(incomingFixture.venue, existingFixture.venue),
+    score: preferIncoming(incomingFixture.score, existingFixture.score),
+    homeTeam: preferIncoming(incomingFixture.homeTeam, existingFixture.homeTeam),
+    awayTeam: preferIncoming(incomingFixture.awayTeam, existingFixture.awayTeam),
+    homeStats: preferIncoming(incomingFixture.homeStats, existingFixture.homeStats),
+    awayStats: preferIncoming(incomingFixture.awayStats, existingFixture.awayStats),
+    model: preferIncoming(incomingFixture.model, existingFixture.model) ?? null,
+    bookmakerOdds: preferIncoming(incomingFixture.bookmakerOdds, existingFixture.bookmakerOdds) ?? null,
   }
 }
 
 function shouldKeepFixture(entry, now) {
   const fixture = entry.fixture
-  const referenceTime = Math.max(dateToMs(fixture.utcDate), dateToMs(entry.lastSeenAt))
+  const fixtureTime = dateToMs(fixture.utcDate)
+  const lastSeenTime = dateToMs(entry.lastSeenAt)
+  const referenceTime = Math.max(fixtureTime, lastSeenTime)
   const ageDays = (now - referenceTime) / (1000 * 60 * 60 * 24)
 
   if (fixture.isPlayed || fixture.statusCategory === 'played') {
     return ageDays <= PLAYED_RETENTION_DAYS
+  }
+
+  if (fixture.isLive || fixture.statusCategory === 'live') {
+    return ageDays <= LIVE_RETENTION_DAYS
+  }
+
+  if (fixtureTime && fixtureTime >= now - ACTIVE_RETENTION_DAYS * 24 * 60 * 60 * 1000) {
+    return true
   }
 
   return ageDays <= ACTIVE_RETENTION_DAYS
@@ -157,8 +193,8 @@ export async function mergeDashboardFixtures({ matches = [], liveMatches = [], p
   let snapshot = await readSnapshot()
   const nowIso = new Date().toISOString()
   const currentFixtures = [...matches, ...liveMatches, ...playedMatches]
-  let restoredFromBackup = false
   let persistenceEnabled = isSupabaseServerConfigured()
+  const importedFixtureIds = new Set()
 
   currentFixtures.forEach((fixture) => {
     if (!fixture?.id) {
@@ -166,6 +202,7 @@ export async function mergeDashboardFixtures({ matches = [], liveMatches = [], p
     }
 
     const existingEntry = snapshot.fixtures[fixture.id]
+    importedFixtureIds.add(String(fixture.id))
 
     snapshot.fixtures[fixture.id] = {
       firstSeenAt: existingEntry?.firstSeenAt ?? nowIso,
@@ -195,10 +232,11 @@ export async function mergeDashboardFixtures({ matches = [], liveMatches = [], p
     .sort(sortAscending)
   const providerSources = [...new Set(currentFixtures.map((fixture) => fixture.source).filter(Boolean))]
   const snapshotEntries = Object.values(snapshot.fixtures)
+  const databaseOnlyCount = snapshotEntries.filter((entry) => !importedFixtureIds.has(String(entry.fixture.id))).length
   const lastSnapshotAt = snapshotEntries.length
     ? snapshotEntries.reduce((latest, entry) => (entry.lastSeenAt > latest ? entry.lastSeenAt : latest), snapshotEntries[0].lastSeenAt)
     : null
-  const servingMode = currentFixtures.length ? 'fresh' : snapshotEntries.length ? 'snapshot' : 'empty'
+  const servingMode = snapshotEntries.length ? 'database' : 'empty'
 
   return {
     matches: mergedMatches,
@@ -210,7 +248,8 @@ export async function mergeDashboardFixtures({ matches = [], liveMatches = [], p
       snapshotCount: snapshotEntries.length,
       lastSnapshotAt,
       providerSources,
-      restoredFromBackup,
+      importedCount: importedFixtureIds.size,
+      databaseOnlyCount,
       persistenceEnabled,
       persistenceMode: persistenceEnabled ? 'supabase' : 'disabled',
     },
