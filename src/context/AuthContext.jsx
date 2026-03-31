@@ -1,12 +1,37 @@
-import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
+// src/context/AuthContext.tsx (updated to use the new interface)
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import AuthContext from './auth-context'
-import { isSupabaseConfigured, supabase } from '../lib/supabase'
+import { isSupabaseConfigured, supabase } from '../lib/supabase/client'
 import { signIn, signUp, resetPassword } from '../api/authApi'
 
-const SESSION_TIMEOUT_MS = 30 * 60 * 1000
+// Constants
+const SESSION_TIMEOUT_MS = 30 * 60 * 1000 // 30 minutes
+const INACTIVITY_CHECK_INTERVAL_MS = 60 * 1000 // 1 minute
 
-// Enhanced Auth Dialog with password reset and better UX
-function AuthDialog({ mode, error, loading, onClose, onModeChange, onSubmit, isConfigured }) {
+// Validation helpers
+const validateEmail = (email) => /^[^\s@]+@([^\s@]+\.)+[^\s@]+$/.test(email)
+
+const validatePassword = (password) => {
+  if (password.length < 6) return 'Password must be at least 6 characters'
+  return null
+}
+
+// Enhanced Auth Dialog Component
+function AuthDialog({ 
+  mode, 
+  error, 
+  loading, 
+  onClose, 
+  onModeChange, 
+  onSubmit, 
+  isConfigured 
+}) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -17,13 +42,13 @@ function AuthDialog({ mode, error, loading, onClose, onModeChange, onSubmit, isC
   const [showPassword, setShowPassword] = useState(false)
   const [touched, setTouched] = useState({ email: false, password: false })
 
-  // Validation
-  const emailError = touched.email && email && !/^[^\s@]+@([^\s@]+\.)+[^\s@]+$/.test(email)
+  // Validation state
+  const emailError = touched.email && email && !validateEmail(email)
     ? 'Please enter a valid email address'
     : null
 
-  const passwordError = touched.password && mode === 'signup' && password && password.length < 6
-    ? 'Password must be at least 6 characters'
+  const passwordError = touched.password && mode === 'signup' && password 
+    ? validatePassword(password)
     : null
 
   const confirmPasswordError = touched.password && mode === 'signup' && password !== confirmPassword
@@ -43,9 +68,8 @@ function AuthDialog({ mode, error, loading, onClose, onModeChange, onSubmit, isC
         setResetSuccess(false)
         setResetEmail('')
       }, 3000)
-    } catch (error) {
-      // Error is handled by resetPassword function
-      console.error('Password reset failed:', error)
+    } catch (err) {
+      console.error('Password reset failed:', err)
     } finally {
       setResetLoading(false)
     }
@@ -57,6 +81,7 @@ function AuthDialog({ mode, error, loading, onClose, onModeChange, onSubmit, isC
     onSubmit({ email, password })
   }
 
+  // Password reset view
   if (showResetPassword) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4 backdrop-blur-sm">
@@ -125,6 +150,7 @@ function AuthDialog({ mode, error, loading, onClose, onModeChange, onSubmit, isC
     )
   }
 
+  // Main auth dialog
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4 backdrop-blur-sm">
       <div 
@@ -262,7 +288,7 @@ function AuthDialog({ mode, error, loading, onClose, onModeChange, onSubmit, isC
           {/* Submit Button */}
           <button
             type="submit"
-            disabled={loading || !isConfigured || (mode === 'signup' && (passwordError || confirmPasswordError))}
+            disabled={loading || !isConfigured || (mode === 'signup' && !!(passwordError || confirmPasswordError))}
             className="w-full rounded-full border border-emerald-400/30 bg-emerald-500/10 px-4 py-3 text-sm font-medium text-emerald-200 transition hover:bg-emerald-500/15 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {loading ? (
@@ -314,6 +340,7 @@ function AuthDialog({ mode, error, loading, onClose, onModeChange, onSubmit, isC
   )
 }
 
+// Main AuthProvider Component
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -322,57 +349,59 @@ export function AuthProvider({ children }) {
   const [authError, setAuthError] = useState('')
   const [authPending, setAuthPending] = useState(false)
   const [lastActivity, setLastActivity] = useState(Date.now())
-  const activityTimeoutRef = useRef(null)
+  const inactivityCheckRef = useRef(null)
 
   const signOut = useCallback(async () => {
     if (!supabase) return
 
     try {
       await supabase.auth.signOut()
+      setSession(null)
     } catch (error) {
       console.error('Sign out error:', error)
     }
   }, [])
 
+  // Initialize auth and listen for changes
   useEffect(() => {
     if (!supabase) {
       setLoading(false)
-      return undefined
+      return
     }
 
     let mounted = true
 
     // Get initial session
-    supabase.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
       if (mounted) {
-        setSession(data.session ?? null)
+        setSession(initialSession)
         setLoading(false)
-        if (data.session) {
+        if (initialSession) {
           setLastActivity(Date.now())
         }
       }
     })
 
     // Listen for auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      if (mounted) {
-        setSession(nextSession)
-        setLoading(false)
-        setDialogOpen(false)
-        setAuthError('')
-        if (nextSession) {
-          setLastActivity(Date.now())
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, nextSession) => {
+        if (mounted) {
+          setSession(nextSession)
+          setLoading(false)
+          setDialogOpen(false)
+          setAuthError('')
+          if (nextSession) {
+            setLastActivity(Date.now())
+          }
         }
       }
-    })
+    )
 
     return () => {
       mounted = false
       subscription.unsubscribe()
-      if (activityTimeoutRef.current) {
-        clearInterval(activityTimeoutRef.current)
+      if (inactivityCheckRef.current) {
+        clearInterval(inactivityCheckRef.current)
       }
     }
   }, [])
@@ -383,9 +412,6 @@ export function AuthProvider({ children }) {
 
     const resetActivityTimer = () => {
       setLastActivity(Date.now())
-      if (activityTimeoutRef.current) {
-        clearTimeout(activityTimeoutRef.current)
-      }
     }
 
     const checkInactivity = () => {
@@ -398,12 +424,12 @@ export function AuthProvider({ children }) {
     const events = ['mousedown', 'keydown', 'scroll', 'touchstart']
     events.forEach(event => window.addEventListener(event, resetActivityTimer))
     
-    activityTimeoutRef.current = setInterval(checkInactivity, 60000)
+    inactivityCheckRef.current = setInterval(checkInactivity, INACTIVITY_CHECK_INTERVAL_MS)
 
     return () => {
       events.forEach(event => window.removeEventListener(event, resetActivityTimer))
-      if (activityTimeoutRef.current) {
-        clearInterval(activityTimeoutRef.current)
+      if (inactivityCheckRef.current) {
+        clearInterval(inactivityCheckRef.current)
       }
     }
   }, [lastActivity, session, signOut])
@@ -422,6 +448,7 @@ export function AuthProvider({ children }) {
 
     try {
       let result
+      
       if (mode === 'signup') {
         result = await signUp({ email: cleanEmail, password: cleanPassword })
 
@@ -434,18 +461,25 @@ export function AuthProvider({ children }) {
         setAuthError(result.message || 'Check your email to confirm the account, then sign in.')
       } else {
         result = await signIn({ email: cleanEmail, password: cleanPassword })
+        
+        if (!result.session) {
+          throw new Error('No session returned from sign in')
+        }
+        
         const { error } = await supabase.auth.setSession(result.session)
         if (error) throw error
       }
     } catch (error) {
-      if (error.message === 'Failed to fetch') {
+      const message = error instanceof Error ? error.message : String(error)
+        
+      if (message === 'Failed to fetch') {
         setAuthError('Authentication request could not reach Supabase. Check your connection and confirm the Supabase project is available, then retry.')
-      } else if (error.message.includes('Invalid login credentials')) {
+      } else if (message.includes('Invalid login credentials')) {
         setAuthError('Invalid email or password. Please try again.')
-      } else if (error.message.includes('Email not confirmed')) {
+      } else if (message.includes('Email not confirmed')) {
         setAuthError('Please confirm your email address before signing in. Check your inbox for the confirmation link.')
       } else {
-        setAuthError(error.message || 'Authentication failed.')
+        setAuthError(message || 'Authentication failed.')
       }
     } finally {
       setAuthPending(false)
@@ -456,10 +490,10 @@ export function AuthProvider({ children }) {
     if (!supabase) return null
     
     try {
-      const { data, error } = await supabase.auth.refreshSession()
+      const { data: { session: refreshedSession }, error } = await supabase.auth.refreshSession()
       if (error) throw error
-      setSession(data.session)
-      return data.session
+      setSession(refreshedSession)
+      return refreshedSession
     } catch (error) {
       console.error('Session refresh error:', error)
       return null
@@ -488,7 +522,7 @@ export function AuthProvider({ children }) {
       signOut,
       refreshSession,
     }),
-    [loading, session, openAuth, closeAuth, signOut, refreshSession],
+    [loading, session, openAuth, closeAuth, signOut, refreshSession]
   )
 
   return (
