@@ -236,7 +236,7 @@ function MatchCard({ match, prediction, analysis, intel, isNextMatch = false }) 
         </button>
       </div>
 
-      <div className="border-y border-white/10 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.22),_transparent_32%),linear-gradient(180deg,rgba(15,23,42,0.98),rgba(2,6,23,0.95))] px-5 py-6 sm:px-6">
+      <div className="border-y border-white/10 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.22),_transparent_32%),linear-gradient(180deg,rgba(15,23,42,0.98),rgba(2,6,23,0.95))] px-4 py-5 sm:px-6 sm:py-6">
         <div className="flex flex-col gap-3 text-xs uppercase tracking-[0.2em] text-slate-400 sm:flex-row sm:items-center sm:justify-between">
           <span className="break-words">{match.competition.name}</span>
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
@@ -248,9 +248,9 @@ function MatchCard({ match, prediction, analysis, intel, isNextMatch = false }) 
         </div>
 
         <div className="mt-5 grid gap-4 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:items-center">
-          <div className="order-2 min-w-0">
-            <div className="flex items-center gap-3">
-              {match.homeTeam.logo ? <img src={match.homeTeam.logo} alt="" className="h-10 w-10 rounded-full bg-white/10 p-1" /> : null}
+          <div className="order-2 min-w-0 rounded-2xl border border-white/10 bg-white/5 p-3 text-center md:border-0 md:bg-transparent md:p-0 md:text-left">
+            <div className="flex items-center justify-center gap-3 md:justify-start">
+              {match.homeTeam.logo ? <img src={match.homeTeam.logo} alt="" className="h-10 w-10 shrink-0 rounded-full bg-white/10 p-1" /> : null}
               <div className="min-w-0">
                 <p className="break-words text-base font-semibold text-white sm:text-2xl">{match.homeTeam.name}</p>
                 <p className="text-xs text-slate-400">Home</p>
@@ -269,8 +269,8 @@ function MatchCard({ match, prediction, analysis, intel, isNextMatch = false }) 
             ) : null}
           </div>
 
-          <div className="order-3 min-w-0 text-left md:text-right">
-            <div className="flex items-center justify-end gap-3">
+          <div className="order-3 min-w-0 rounded-2xl border border-white/10 bg-white/5 p-3 text-center md:border-0 md:bg-transparent md:p-0 md:text-right">
+            <div className="flex items-center justify-center gap-3 md:justify-end">
               <div className="min-w-0 md:order-1">
                 <p className="break-words text-base font-semibold text-white sm:text-2xl">{match.awayTeam.name}</p>
                 <p className="text-xs text-slate-400">Away</p>
@@ -280,7 +280,7 @@ function MatchCard({ match, prediction, analysis, intel, isNextMatch = false }) 
           </div>
         </div>
 
-        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+        <div className="mt-5 grid gap-3 md:grid-cols-3">
           {Object.entries(prediction).map(([key, value]) => {
             const isStrongest = key === strongestOutcome
 
@@ -300,9 +300,9 @@ function MatchCard({ match, prediction, analysis, intel, isNextMatch = false }) 
         </div>
       </div>
 
-      <div className="px-5 py-4 sm:px-6">
+      <div className="px-4 py-4 sm:px-6">
         <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-200">
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="grid w-full grid-cols-2 gap-3 sm:flex sm:w-auto sm:flex-wrap sm:items-center">
           <button
             type="button"
             onClick={handleToggleLike}
@@ -325,7 +325,7 @@ function MatchCard({ match, prediction, analysis, intel, isNextMatch = false }) 
             type="button"
             onClick={() => setIsSaved((current) => !current)}
             className={[
-              'rounded-full border px-3 py-2 transition',
+              'w-full rounded-full border px-3 py-2 transition sm:w-auto',
               isSaved ? 'border-sky-400/40 bg-sky-500/15 text-sky-100' : 'border-white/10 bg-white/5 hover:bg-white/10',
             ].join(' ')}
           >

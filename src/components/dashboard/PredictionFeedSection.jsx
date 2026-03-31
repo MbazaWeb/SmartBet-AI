@@ -72,7 +72,7 @@ export default function PredictionFeedSection({
         ) : null}
       </div>
 
-      <div className="mb-5 flex gap-3 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible">
+      <div className="mb-5 grid grid-cols-1 gap-3 sm:flex sm:flex-wrap sm:items-center">
         {feedTabs.map((tab) => {
           const isActive = activeFeedTab === tab.id
           const tabCount = feedSourceInsights[tab.id]?.length ?? 0
@@ -83,7 +83,7 @@ export default function PredictionFeedSection({
               type="button"
               onClick={() => handleFeedTabChange(tab.id)}
               className={[
-                'shrink-0 rounded-full border px-4 py-2 text-sm transition',
+                'w-full rounded-full border px-4 py-2 text-sm transition sm:w-auto',
                 isActive
                   ? 'border-sky-400/40 bg-sky-500/15 text-sky-100'
                   : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10',
@@ -95,7 +95,7 @@ export default function PredictionFeedSection({
         })}
       </div>
 
-      <div className="mb-5 flex gap-3 overflow-x-auto pb-1 xl:hidden">
+      <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:hidden">
         {filterOptions.map((option) => {
           const isActive = activeFilter === option.id
 
@@ -105,7 +105,7 @@ export default function PredictionFeedSection({
               type="button"
               onClick={() => handleFilterChange(option.id)}
               className={[
-                'shrink-0 rounded-full border px-4 py-2 text-sm transition',
+                'w-full rounded-full border px-4 py-2 text-sm transition',
                 isActive
                   ? 'border-emerald-400/40 bg-emerald-500/15 text-emerald-200'
                   : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10',
@@ -116,22 +116,22 @@ export default function PredictionFeedSection({
           )
         })}
 
-        <label className="flex shrink-0 items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
+        <label className="flex w-full items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-300 sm:col-span-1">
           <span className="data-label text-[11px] uppercase text-slate-400">Date</span>
           <input
             type="date"
             value={selectedDate}
             onChange={handleDateChange}
-            className="bg-transparent text-slate-100 outline-none [color-scheme:dark]"
+            className="min-w-0 flex-1 bg-transparent text-slate-100 outline-none [color-scheme:dark]"
           />
         </label>
 
-        <label className="flex shrink-0 items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
+        <label className="flex w-full items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-300 sm:col-span-1">
           <span className="data-label text-[11px] uppercase text-slate-400">Sort</span>
           <select
             value={sortMode}
             onChange={(event) => setSortMode(event.target.value)}
-            className="bg-transparent text-slate-100 outline-none"
+            className="min-w-0 flex-1 bg-transparent text-slate-100 outline-none"
           >
             {sortOptions.map((option) => (
               <option key={option.id} value={option.id} className="bg-slate-950 text-slate-100">
