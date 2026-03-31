@@ -11,7 +11,7 @@ export async function getDashboardData(options = {}) {
   const fetchedMatches = await Promise.resolve(getUpcomingFixtures(requestOptions)).catch(() => [])
   const fetchedLiveMatches = await Promise.resolve(getLiveFixtures(requestOptions)).catch(() => [])
   const fetchedPlayedMatches = await Promise.resolve(getPlayedFixtures(requestOptions)).catch(() => [])
-  const { matches, liveMatches, playedMatches, nextMatch, dataStatus } = mergeDashboardFixtures({
+  const { matches, liveMatches, playedMatches, nextMatch, dataStatus } = await mergeDashboardFixtures({
     matches: fetchedMatches,
     liveMatches: fetchedLiveMatches,
     playedMatches: fetchedPlayedMatches,

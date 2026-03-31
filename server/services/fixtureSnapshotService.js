@@ -1,19 +1,8 @@
-import fs from 'node:fs'
-import os from 'node:os'
-import path from 'node:path'
+import { getSupabaseServerClient, isSupabaseServerConfigured } from './supabaseServerService.js'
 
-const isServerlessRuntime = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME)
-const snapshotDirectory = isServerlessRuntime
-  ? path.join(os.tmpdir(), 'smartbet-ai', 'server-data')
-  : path.resolve(process.cwd(), 'server/data')
-const SNAPSHOT_FILE_PATH = path.join(snapshotDirectory, 'fixture-snapshot.json')
-const SNAPSHOT_BACKUP_FILE_PATH = path.join(snapshotDirectory, 'fixture-snapshot-backup.json')
+const SNAPSHOT_TABLE = 'fixture_snapshots'
 const ACTIVE_RETENTION_DAYS = 7
 const PLAYED_RETENTION_DAYS = 21
-
-function ensureSnapshotDirectory() {
-  fs.mkdirSync(snapshotDirectory, { recursive: true })
-}
 
 function defaultSnapshot() {
   return {
@@ -21,58 +10,99 @@ function defaultSnapshot() {
   }
 }
 
-function readSnapshot() {
-  try {
-    ensureSnapshotDirectory()
-  } catch {
+function isSupabaseSnapshotRow(value) {
+  return value && typeof value === 'object' && value.fixture_id && value.fixture
+}
+
+function toSnapshotRows(snapshot) {
+  return Object.entries(snapshot.fixtures).map(([fixtureId, entry]) => ({
+    fixture_id: String(fixtureId),
+    first_seen_at: entry.firstSeenAt,
+    last_seen_at: entry.lastSeenAt,
+    utc_date: entry.fixture?.utcDate ?? null,
+    status_category: entry.fixture?.statusCategory ?? null,
+    is_played: Boolean(entry.fixture?.isPlayed || entry.fixture?.statusCategory === 'played'),
+    source: entry.fixture?.source ?? null,
+    fixture: entry.fixture,
+  }))
+}
+
+function fromSnapshotRows(rows) {
+  return {
+    fixtures: Object.fromEntries(
+      rows
+        .filter(isSupabaseSnapshotRow)
+        .map((row) => [
+          String(row.fixture_id),
+          {
+            firstSeenAt: row.first_seen_at,
+            lastSeenAt: row.last_seen_at,
+            fixture: row.fixture,
+          },
+        ]),
+    ),
+  }
+}
+
+async function readSnapshot() {
+  if (!isSupabaseServerConfigured()) {
     return defaultSnapshot()
   }
 
-  if (!fs.existsSync(SNAPSHOT_FILE_PATH)) {
-    return defaultSnapshot()
-  }
-
   try {
-    const content = fs.readFileSync(SNAPSHOT_FILE_PATH, 'utf8')
-    return content ? JSON.parse(content) : defaultSnapshot()
+    const client = getSupabaseServerClient()
+    const { data, error } = await client
+      .from(SNAPSHOT_TABLE)
+      .select('fixture_id, first_seen_at, last_seen_at, fixture')
+
+    if (error) {
+      return defaultSnapshot()
+    }
+
+    return fromSnapshotRows(data ?? [])
   } catch {
     return defaultSnapshot()
   }
 }
 
-function writeSnapshot(snapshot) {
-  try {
-    ensureSnapshotDirectory()
-    fs.writeFileSync(SNAPSHOT_FILE_PATH, JSON.stringify(snapshot, null, 2), 'utf8')
-    return true
-  } catch {
+async function writeSnapshot(snapshot) {
+  if (!isSupabaseServerConfigured()) {
     return false
   }
-}
-
-function readBackupSnapshot() {
-  try {
-    ensureSnapshotDirectory()
-  } catch {
-    return defaultSnapshot()
-  }
-
-  if (!fs.existsSync(SNAPSHOT_BACKUP_FILE_PATH)) {
-    return defaultSnapshot()
-  }
 
   try {
-    const content = fs.readFileSync(SNAPSHOT_BACKUP_FILE_PATH, 'utf8')
-    return content ? JSON.parse(content) : defaultSnapshot()
-  } catch {
-    return defaultSnapshot()
-  }
-}
+    const client = getSupabaseServerClient()
+    const rows = toSnapshotRows(snapshot)
 
-function writeBackupSnapshot(snapshot) {
-  try {
-    ensureSnapshotDirectory()
-    fs.writeFileSync(SNAPSHOT_BACKUP_FILE_PATH, JSON.stringify(snapshot, null, 2), 'utf8')
+    if (!rows.length) {
+      const { error } = await client.from(SNAPSHOT_TABLE).delete().neq('fixture_id', '')
+      return !error
+    }
+
+    const { error } = await client.from(SNAPSHOT_TABLE).upsert(rows, { onConflict: 'fixture_id' })
+    if (error) {
+      return false
+    }
+
+    const retainedFixtureIds = rows.map((row) => row.fixture_id)
+    const { data: existingRows, error: existingError } = await client.from(SNAPSHOT_TABLE).select('fixture_id')
+
+    if (existingError) {
+      return false
+    }
+
+    const staleFixtureIds = (existingRows ?? [])
+      .map((row) => String(row.fixture_id))
+      .filter((fixtureId) => !retainedFixtureIds.includes(fixtureId))
+
+    if (staleFixtureIds.length) {
+      const { error: deleteError } = await client.from(SNAPSHOT_TABLE).delete().in('fixture_id', staleFixtureIds)
+
+      if (deleteError) {
+        return false
+      }
+    }
+
     return true
   } catch {
     return false
@@ -123,22 +153,12 @@ function sortDescending(left, right) {
   return dateToMs(right.utcDate) - dateToMs(left.utcDate)
 }
 
-export function mergeDashboardFixtures({ matches = [], liveMatches = [], playedMatches = [] }) {
-  let snapshot = readSnapshot()
+export async function mergeDashboardFixtures({ matches = [], liveMatches = [], playedMatches = [] }) {
+  let snapshot = await readSnapshot()
   const nowIso = new Date().toISOString()
   const currentFixtures = [...matches, ...liveMatches, ...playedMatches]
   let restoredFromBackup = false
-  let persistenceEnabled = true
-
-  if (!currentFixtures.length && !Object.keys(snapshot.fixtures).length) {
-    const backupSnapshot = readBackupSnapshot()
-
-    if (Object.keys(backupSnapshot.fixtures).length) {
-      snapshot = backupSnapshot
-      restoredFromBackup = true
-      persistenceEnabled = writeSnapshot(backupSnapshot)
-    }
-  }
+  let persistenceEnabled = isSupabaseServerConfigured()
 
   currentFixtures.forEach((fixture) => {
     if (!fixture?.id) {
@@ -159,10 +179,8 @@ export function mergeDashboardFixtures({ matches = [], liveMatches = [], playedM
     Object.entries(snapshot.fixtures).filter(([, entry]) => shouldKeepFixture(entry, now)),
   )
 
-  persistenceEnabled = writeSnapshot(snapshot) && persistenceEnabled
-
-  if (currentFixtures.length) {
-    persistenceEnabled = writeBackupSnapshot(snapshot) && persistenceEnabled
+  if (persistenceEnabled) {
+    persistenceEnabled = await writeSnapshot(snapshot)
   }
 
   const allFixtures = Object.values(snapshot.fixtures).map((entry) => entry.fixture)
@@ -194,7 +212,7 @@ export function mergeDashboardFixtures({ matches = [], liveMatches = [], playedM
       providerSources,
       restoredFromBackup,
       persistenceEnabled,
-      persistenceMode: isServerlessRuntime ? 'temporary' : 'filesystem',
+      persistenceMode: persistenceEnabled ? 'supabase' : 'disabled',
     },
   }
 }
