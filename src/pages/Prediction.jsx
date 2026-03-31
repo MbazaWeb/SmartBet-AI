@@ -7,16 +7,16 @@ function Prediction() {
   const dashboard = useDashboardData()
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+    <main className="route-shell-enter mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
       <section className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
         <div className="glass-panel rounded-[32px] p-6 sm:p-8">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="data-label text-xs uppercase text-emerald-400/80">Prediction page</p>
-              <h2 className="mt-4 text-4xl font-bold tracking-tight text-white sm:text-5xl">
+              <h2 className="mt-4 text-3xl font-bold tracking-tight text-white sm:text-5xl">
                 Live and upcoming predictions
               </h2>
-              <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300 sm:text-lg">
+              <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-300 sm:text-lg">
                 This page is prediction-only. It keeps the Instagram-style timeline focused on live and upcoming matches with direct filters.
               </p>
             </div>
@@ -37,7 +37,11 @@ function Prediction() {
           </div>
         </div>
 
-        <PredictionBoard researchDigest={dashboard.researchDigest} trainingSummary={dashboard.trainingSummary} />
+        <PredictionBoard
+          loading={dashboard.loading}
+          researchDigest={dashboard.researchDigest}
+          trainingSummary={dashboard.trainingSummary}
+        />
       </section>
 
       <section className="mt-8 grid gap-6 xl:grid-cols-[230px_minmax(0,1fr)]">

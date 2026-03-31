@@ -1,6 +1,7 @@
 import { formatKickoff, formatScore } from '../../features/dashboard/helpers'
+import { SkeletonBlock, SkeletonText } from '../ui/Skeleton'
 
-export default function PlayedResultsPanel({ playedResultInsights, outcomeLabels }) {
+export default function PlayedResultsPanel({ loading, playedResultInsights, outcomeLabels }) {
   return (
     <div className="glass-panel rounded-[28px] p-5" id="results">
       <div className="flex items-center justify-between gap-3">
@@ -14,7 +15,29 @@ export default function PlayedResultsPanel({ playedResultInsights, outcomeLabels
       </div>
 
       <div className="mt-4 space-y-3">
-        {playedResultInsights.length ? playedResultInsights.map((match) => (
+        {loading ? Array.from({ length: 3 }, (_, index) => (
+          <div key={index} className="rounded-3xl border border-white/10 bg-white/5 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <SkeletonText className="h-4 w-48 max-w-full" />
+                <SkeletonText className="mt-2 h-4 w-56 max-w-full" />
+              </div>
+              <SkeletonBlock className="h-8 w-16 rounded-full" />
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              <SkeletonBlock className="h-20 rounded-2xl" />
+              <SkeletonBlock className="h-20 rounded-2xl" />
+              <SkeletonBlock className="h-20 rounded-2xl" />
+            </div>
+
+            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              <SkeletonBlock className="h-20 rounded-2xl" />
+              <SkeletonBlock className="h-20 rounded-2xl" />
+              <SkeletonBlock className="h-20 rounded-2xl" />
+            </div>
+          </div>
+        )) : playedResultInsights.length ? playedResultInsights.map((match) => (
           <div key={match.id} className="rounded-3xl border border-white/10 bg-white/5 p-4">
             <div className="flex items-start justify-between gap-3">
               <div>

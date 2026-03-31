@@ -71,6 +71,24 @@
   }
 }
 
+@keyframes skeleton-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes route-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @layer utilities {
   .glass-panel {
     background: linear-gradient(180deg, rgba(13, 24, 42, 0.88), rgba(8, 16, 28, 0.78));
@@ -83,5 +101,24 @@
   .data-label {
     font-family: 'IBM Plex Mono', monospace;
     letter-spacing: 0.08em;
+  }
+
+  .skeleton-block {
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(90deg, rgba(30, 41, 59, 0.9), rgba(51, 65, 85, 0.78), rgba(30, 41, 59, 0.9));
+  }
+
+  .skeleton-block::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.14), transparent);
+    animation: skeleton-shimmer 1.7s ease-in-out infinite;
+  }
+
+  .route-shell-enter {
+    animation: route-fade-in 280ms ease-out;
   }
 }

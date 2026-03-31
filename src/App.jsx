@@ -1,20 +1,42 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import Header from './components/Header'
+import { SkeletonBlock } from './components/ui/Skeleton'
 import Home from './pages/Home'
-import { Route, Routes } from 'react-router-dom'
+import { Route, Routes, useLocation } from 'react-router-dom'
+import { loadPredictionRoute, loadResultsRoute } from './lib/routeLoader'
 
-const Results = lazy(() => import('./pages/Results'))
-const Prediction = lazy(() => import('./pages/Prediction'))
+const Results = lazy(loadResultsRoute)
+const Prediction = lazy(loadPredictionRoute)
+
+function ScrollToTop() {
+  const location = useLocation()
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [location.pathname])
+
+  return null
+}
 
 function RouteFallback() {
   return (
-    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
-      <div className="glass-panel rounded-[32px] px-6 py-12 text-center sm:px-8">
-        <p className="data-label text-xs uppercase text-emerald-400/80">Loading page</p>
-        <h2 className="mt-4 text-3xl font-bold tracking-tight text-white sm:text-4xl">Preparing the next route</h2>
-        <p className="mt-3 text-sm leading-6 text-slate-400 sm:text-base">
-          Prediction and Results are loaded on demand to keep the first screen lighter.
-        </p>
+    <main className="route-shell-enter mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+      <div className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
+        <div className="glass-panel rounded-[32px] p-6 sm:p-8">
+          <p className="data-label text-xs uppercase text-emerald-400/80">Loading page</p>
+          <SkeletonBlock className="mt-4 h-12 w-full max-w-xl rounded-3xl sm:h-14" />
+          <SkeletonBlock className="mt-4 h-4 w-full max-w-2xl" />
+          <SkeletonBlock className="mt-3 h-4 w-4/5 max-w-xl" />
+          <div className="mt-8 grid gap-4 sm:grid-cols-2">
+            <SkeletonBlock className="h-28 rounded-[28px]" />
+            <SkeletonBlock className="h-28 rounded-[28px]" />
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          <SkeletonBlock className="glass-panel h-48 rounded-[32px]" />
+          <SkeletonBlock className="glass-panel h-40 rounded-[32px]" />
+        </div>
       </div>
     </main>
   )
@@ -22,9 +44,10 @@ function RouteFallback() {
 
 function App() {
   return (
-    <div className="relative min-h-screen overflow-hidden bg-transparent text-slate-100">
+    <div className="relative min-h-screen overflow-hidden bg-transparent pb-24 text-slate-100 sm:pb-0">
       <Header />
       <Suspense fallback={<RouteFallback />}>
+        <ScrollToTop />
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/results" element={<Results />} />

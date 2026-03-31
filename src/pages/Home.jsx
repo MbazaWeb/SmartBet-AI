@@ -1,33 +1,46 @@
 import { Link } from 'react-router-dom'
+import { loadPredictionRoute, loadResultsRoute } from '../lib/routeLoader'
 
 function Home() {
   return (
-    <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+    <main className="route-shell-enter mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
       <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
         <div className="glass-panel relative overflow-hidden rounded-[34px] p-6 sm:p-8 lg:p-10">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(34,197,94,0.14),_transparent_34%),radial-gradient(circle_at_bottom_right,_rgba(56,189,248,0.16),_transparent_28%)]" />
           <div className="relative">
             <p className="data-label text-xs uppercase text-emerald-400/80">Landing page</p>
-            <h2 className="mt-4 max-w-3xl text-4xl font-bold tracking-tight text-white sm:text-5xl lg:text-6xl">
+            <h2 className="mt-4 max-w-3xl text-3xl font-bold tracking-tight text-white sm:text-5xl lg:text-6xl">
               Prediction intelligence, separated cleanly into signal and scorecard.
             </h2>
-            <p className="mt-5 max-w-2xl text-base leading-7 text-slate-300 sm:text-lg">
+            <p className="mt-5 max-w-2xl text-sm leading-7 text-slate-300 sm:text-lg">
               Use Prediction for live and upcoming match calls, then switch to Results to grade every finished fixture against the model. The home page now acts as a true front door instead of a dashboard dump.
             </p>
 
-            <div className="mt-8 flex flex-wrap gap-3">
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <Link
                 to="/prediction"
-                className="rounded-full border border-emerald-400/30 bg-emerald-500/12 px-6 py-3 text-sm font-medium text-emerald-100 transition hover:bg-emerald-500/18"
+                onMouseEnter={loadPredictionRoute}
+                onFocus={loadPredictionRoute}
+                onTouchStart={loadPredictionRoute}
+                className="rounded-full border border-emerald-400/30 bg-emerald-500/12 px-6 py-3 text-center text-sm font-medium text-emerald-100 transition hover:bg-emerald-500/18"
               >
                 Open Prediction
               </Link>
               <Link
                 to="/results"
-                className="rounded-full border border-white/10 bg-white/5 px-6 py-3 text-sm font-medium text-slate-100 transition hover:bg-white/10"
+                onMouseEnter={loadResultsRoute}
+                onFocus={loadResultsRoute}
+                onTouchStart={loadResultsRoute}
+                className="rounded-full border border-white/10 bg-white/5 px-6 py-3 text-center text-sm font-medium text-slate-100 transition hover:bg-white/10"
               >
                 Open Results
               </Link>
+            </div>
+
+            <div className="mt-8 flex flex-wrap gap-3 text-xs text-slate-300 sm:text-sm">
+              <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2">Mobile-first layout</div>
+              <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2">Lazy route loading</div>
+              <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2">Snapshot-backed fixtures</div>
             </div>
 
             <div className="mt-10 grid gap-4 sm:grid-cols-3">

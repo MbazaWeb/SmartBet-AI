@@ -1,9 +1,30 @@
-export default function LivePollsPanel({ livePolls, handleVote }) {
+import { SkeletonBlock, SkeletonText } from '../ui/Skeleton'
+
+export default function LivePollsPanel({ loading, livePolls, handleVote }) {
   return (
     <div className="glass-panel rounded-[28px] p-5">
       <p className="data-label text-xs uppercase text-slate-400">Live polls</p>
       <div className="mt-4 space-y-4">
-        {livePolls.map((poll) => {
+        {(loading ? Array.from({ length: 2 }, (_, index) => ({ id: index })) : livePolls).map((poll) => {
+          if (loading) {
+            return (
+              <div key={poll.id} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                <SkeletonText className="h-4 w-4/5" />
+                <div className="mt-3 space-y-2">
+                  {[0, 1, 2].map((option) => (
+                    <div key={option} className="rounded-2xl border border-white/10 bg-slate-950/50 px-3 py-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <SkeletonText className="h-4 w-24" />
+                        <SkeletonText className="h-4 w-8" />
+                      </div>
+                      <SkeletonBlock className="mt-2 h-2 rounded-full" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          }
+
           const totalVotes = poll.options.reduce((total, option) => total + option.votes, 0)
 
           return (

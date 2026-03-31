@@ -1,4 +1,5 @@
 import MatchCard from '../MatchCard'
+import { SkeletonBlock, SkeletonCircle, SkeletonText } from '../ui/Skeleton'
 import { feedTabs, filterOptions, sortOptions } from '../../features/dashboard/helpers'
 
 function buildEmptyFeedLabel(activeFeedLabel) {
@@ -31,6 +32,8 @@ export default function PredictionFeedSection({
   sortMode,
   setSortMode,
 }) {
+  const loadingCards = Array.from({ length: 3 }, (_, index) => index)
+
   return (
     <div id="feed">
       {!loading && !error && dataStatus?.servingMode === 'snapshot' ? (
@@ -92,7 +95,7 @@ export default function PredictionFeedSection({
         })}
       </div>
 
-      <div className="mb-5 flex flex-wrap items-center gap-3 xl:hidden">
+      <div className="mb-5 flex gap-3 overflow-x-auto pb-1 xl:hidden">
         {filterOptions.map((option) => {
           const isActive = activeFilter === option.id
 
@@ -140,8 +143,35 @@ export default function PredictionFeedSection({
       </div>
 
       {loading ? (
-        <div className="glass-panel rounded-3xl px-6 py-10 text-center text-lg text-slate-300">
-          Loading social prediction feed...
+        <div className="space-y-5">
+          {loadingCards.map((card) => (
+            <div key={card} className="glass-panel rounded-[30px] p-5 sm:p-6">
+              <div className="flex items-start gap-4">
+                <SkeletonCircle className="h-12 w-12 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <SkeletonText className="h-4 w-40" />
+                  <SkeletonText className="mt-3 h-4 w-56 max-w-full" />
+                </div>
+                <SkeletonBlock className="h-10 w-20 rounded-full" />
+              </div>
+
+              <div className="mt-6 grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+                <div className="rounded-[28px] border border-white/10 bg-white/5 p-4">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <SkeletonBlock className="h-24 rounded-3xl" />
+                    <SkeletonBlock className="h-24 rounded-3xl" />
+                  </div>
+                  <SkeletonText className="mt-4 h-4 w-5/6" />
+                  <SkeletonText className="mt-3 h-4 w-3/5" />
+                </div>
+
+                <div className="space-y-3 rounded-[28px] border border-white/10 bg-white/5 p-4">
+                  <SkeletonBlock className="h-20 rounded-3xl" />
+                  <SkeletonBlock className="h-20 rounded-3xl" />
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       ) : null}
 

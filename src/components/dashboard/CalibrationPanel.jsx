@@ -1,4 +1,6 @@
-export default function CalibrationPanel({ calibrationBands }) {
+import { SkeletonBlock, SkeletonText } from '../ui/Skeleton'
+
+export default function CalibrationPanel({ loading, calibrationBands }) {
   return (
     <div className="glass-panel rounded-[28px] p-5">
       <div className="flex items-center justify-between gap-3">
@@ -12,7 +14,27 @@ export default function CalibrationPanel({ calibrationBands }) {
       </div>
 
       <div className="mt-4 space-y-3">
-        {calibrationBands.map((band) => {
+        {(loading ? Array.from({ length: 3 }, (_, index) => ({ id: index })) : calibrationBands).map((band) => {
+          if (loading) {
+            return (
+              <div key={band.id} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <SkeletonText className="h-4 w-24" />
+                    <SkeletonText className="mt-2 h-4 w-52 max-w-full" />
+                  </div>
+                  <SkeletonBlock className="h-8 w-20 rounded-full" />
+                </div>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                  <SkeletonBlock className="h-16 rounded-2xl" />
+                  <SkeletonBlock className="h-16 rounded-2xl" />
+                  <SkeletonBlock className="h-16 rounded-2xl" />
+                </div>
+              </div>
+            )
+          }
+
           const isHot = band.calibrationGap !== null && band.calibrationGap >= 0
 
           return (
