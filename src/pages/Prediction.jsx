@@ -3,6 +3,7 @@ import ErrorBoundary from '../components/common/ErrorBoundary'
 
 // Lazy load components for better performance
 const PredictionBoard = lazy(() => import('../components/dashboard/PredictionBoard'))
+const PredictionExplainerAssistant = lazy(() => import('../components/dashboard/PredictionExplainerAssistant'))
 const PredictionFeedSection = lazy(() => import('../components/dashboard/PredictionFeedSection'))
 const SidebarFilters = lazy(() => import('../components/dashboard/SidebarFilters'))
 
@@ -158,6 +159,16 @@ function Prediction() {
             )}
           </div>
         </section>
+
+        <Suspense fallback={<BoardSkeleton />}>
+          <PredictionExplainerAssistant
+            loading={dashboard.loading}
+            matches={dashboard.predictionOfTheDayMatches.length ? dashboard.predictionOfTheDayMatches : dashboard.selectedFeedInsights}
+            outcomeLabels={dashboard.outcomeLabels}
+            activeFeedLabel={dashboard.activeFeedLabel}
+            lastUpdated={dashboard.lastUpdated}
+          />
+        </Suspense>
 
         {/* Main Content Section */}
         <section className="mt-8 grid gap-6 xl:grid-cols-[230px_minmax(0,1fr)]">
