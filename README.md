@@ -1,16 +1,27 @@
-# React + Vite
+# SmartBet AI
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+SmartBet AI is a Vite + React frontend with an Express backend that aggregates football fixtures, model predictions, bookmaker context, and Supabase-backed social interactions.
 
-Currently, two official plugins are available:
+## Development
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- `npm run dev` starts the Vite frontend and the local Express backend together.
+- `npm run server` starts only the local backend on `PORT` or `8787`.
+- `npm run build` creates the production frontend bundle in `dist`.
 
-## React Compiler
+## Deployment
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- Local backend entrypoint: `server/index.js`
+- Shared Express app: `server/app.js`
+- Vercel serverless API entrypoint: `api/[...route].js`
 
-## Expanding the ESLint configuration
+### Required Vercel environment variables
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+- `API_FOOTBALL_KEY`
+- `VITE_FOOTBALL_DATA_API_KEY`
+- `THE_SPORTS_DB_KEY`
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+
+Without these values in the Vercel project settings, production API routes can deploy but still fail at runtime.
